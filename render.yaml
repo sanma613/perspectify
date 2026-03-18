@@ -1,0 +1,23 @@
+# render.yaml — define los servicios en Render
+# Sube este archivo al repo y Render lo detecta automáticamente
+
+services:
+  # ── API (webhook handler + worker) ───────────────────────
+  - type: web
+    name: perspectify-api
+    runtime: node
+    rootDir: apps/api
+    buildCommand: "bun install && bun build src/index.ts --outdir dist --target bun"
+    startCommand: "bun run dist/index.js"
+    envVars:
+      - key: DATABASE_URL
+        sync: false         # lo pones manualmente en Render dashboard
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: WEB_URL
+        sync: false
+    healthCheckPath: /health
