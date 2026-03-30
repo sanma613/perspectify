@@ -3,29 +3,39 @@ import { db, endpoints, events, users, getPlanLimits, isUnlimited } from '@persp
 import { enqueueDelivery } from '@perspectify/queue'
 import { eq, and, gte, count } from 'drizzle-orm'
 import { verifyStripeSignature } from '../lib/verify-signature'
+import { decrypt } from '../lib/encryption'
+import { hashWebhookToken } from '../lib/webhook-token'
 
 export const webhookRoutes = new Hono()
 
 // POST /webhook/:token
 webhookRoutes.post('/:token', async (c) => {
   const token = c.req.param('token')
+  const tokenHash = hashWebhookToken(token)
   const signature = c.req.header('stripe-signature') ?? ''
   const rawBody = await c.req.text()
 
-  // 1. Buscar endpoint por token
+  // 1. Buscar endpoint por hash de token
   const [endpoint] = await db
     .select()
     .from(endpoints)
-    .where(eq(endpoints.token, token))
+    .where(eq(endpoints.tokenHash, tokenHash))
     .limit(1)
 
   if (!endpoint) return c.json({ error: 'Endpoint not found' }, 404)
+
+  let endpointSecret: string
+  try {
+    endpointSecret = decrypt(endpoint.secret)
+  } catch {
+    return c.json({ error: 'Invalid endpoint secret configuration' }, 500)
+  }
 
   // 2. Verificar firma HMAC — sin dependencia de stripe
   const { valid, event: stripeEvent, error } = verifyStripeSignature(
     rawBody,
     signature,
-    endpoint.secret
+    endpointSecret
   )
 
   if (!valid || !stripeEvent) {
@@ -50,29 +60,31 @@ webhookRoutes.post('/:token', async (c) => {
     .where(eq(users.id, endpoint.userId))
     .limit(1)
 
-  if (user) {
-    const limits = getPlanLimits(user.plan)
+  if (!user) {
+    return c.json({ error: 'User not found' }, 404)
+  }
 
-    if (!isUnlimited(limits.maxEventsPerMonth)) {
-      const startOfMonth = new Date()
-      startOfMonth.setDate(1)
-      startOfMonth.setHours(0, 0, 0, 0)
+  const limits = getPlanLimits(user.plan)
 
-      const [{ total }] = await db
-        .select({ total: count() })
-        .from(events)
-        .where(
-          and(
-            eq(events.endpointId, endpoint.id),
-            gte(events.receivedAt, startOfMonth)
-          )
+  if (!isUnlimited(limits.maxEventsPerMonth)) {
+    const startOfMonth = new Date()
+    startOfMonth.setDate(1)
+    startOfMonth.setHours(0, 0, 0, 0)
+
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(events)
+      .where(
+        and(
+          eq(events.endpointId, endpoint.id),
+          gte(events.receivedAt, startOfMonth)
         )
+      )
 
-      if (total >= limits.maxEventsPerMonth) {
-        // Respondemos 200 para que Stripe no reintente
-        // El usuario verá en el dashboard que alcanzó el límite
-        return c.json({ received: true, dropped: true, reason: 'plan_limit_reached' })
-      }
+    if (total >= limits.maxEventsPerMonth) {
+      // Respondemos 200 para que Stripe no reintente
+      // El usuario verá en el dashboard que alcanzó el límite
+      return c.json({ received: true, dropped: true, reason: 'plan_limit_reached' })
     }
   }
 
@@ -89,7 +101,7 @@ webhookRoutes.post('/:token', async (c) => {
     .returning()
 
   // 6. Encolar
-  await enqueueDelivery(event.id)
+  await enqueueDelivery(event.id, user.plan)
 
   return c.json({ received: true })
 })

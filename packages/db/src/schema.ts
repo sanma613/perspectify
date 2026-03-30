@@ -31,7 +31,9 @@ export const endpoints = pgTable('endpoints', {
   id:          text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId:      text('user_id').notNull().references(() => users.id),
   name:        text('name').notNull(),              // ej: "Stripe → Make producción"
-  token:       text('token').notNull().unique(),    // token en /webhook/:token
+  tokenHash:   text('token_hash').notNull().unique(),
+  tokenPrefix: text('token_prefix').notNull().unique(), // identificador corto para UI/soporte
+  tokenRotatedAt: timestamp('token_rotated_at').defaultNow().notNull(),
   destination: text('destination').notNull(),       // URL real (Zapier/Make)
   secret:      text('secret').notNull(),            // Stripe webhook secret (HMAC)
   createdAt:   timestamp('created_at').defaultNow().notNull(),
@@ -47,6 +49,7 @@ export const events = pgTable('events', {
   payload:     jsonb('payload').notNull(),           // body completo del webhook
   status:      eventStatusEnum('status').default('PENDING').notNull(),
   attempts:    integer('attempts').default(0).notNull(),
+  replayCount: integer('replay_count').default(0).notNull(),
   lastError:   text('last_error'),
   receivedAt:  timestamp('received_at').defaultNow().notNull(),
   deliveredAt: timestamp('delivered_at'),

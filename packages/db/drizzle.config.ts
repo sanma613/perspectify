@@ -1,10 +1,10 @@
 import { defineConfig } from 'drizzle-kit'
 
+const databaseUrl = process.env.DATABASE_URL
+
 export default defineConfig({
   schema: './src/schema.ts',
   out:    './migrations',
-  driver: 'pg',
-  dbCredentials: {
-    connectionString: process.env.DATABASE_URL!,
-  },
+  dialect: 'postgresql',
+  ...(databaseUrl ? { dbCredentials: { url: databaseUrl } } : {}),
 })

@@ -1,12 +1,44 @@
-import { db, events, deliveries, endpoints } from '@perspectify/db'
+import { db, events, deliveries, endpoints, users, PLANS, getPlanLimits, type PlanId } from '@perspectify/db'
 import { getQueue, JOBS, type DeliverEventPayload } from '@perspectify/queue'
-import { eq } from 'drizzle-orm'
+import { and, eq, inArray, lt } from 'drizzle-orm'
 
 export async function startWorker() {
-  const queue = await getQueue()
+  const boss = await getQueue()
 
-  await queue.work<DeliverEventPayload>(JOBS.DELIVER_EVENT, async (job) => {
+  await boss.work<DeliverEventPayload>(JOBS.DELIVER_EVENT, async (job) => {
     await deliverEvent(job.data.eventId)
+  })
+
+  await boss.schedule('cleanup-events', '0 3 * * *', {})
+  await boss.work('cleanup-events', async () => {
+    for (const [planId, limits] of Object.entries(PLANS) as Array<[PlanId, (typeof PLANS)[PlanId]]>) {
+      const cutoff = new Date(Date.now() - limits.retentionDays * 24 * 60 * 60 * 1000)
+
+      const planEvents = await db
+        .select({ id: events.id })
+        .from(events)
+        .innerJoin(endpoints, eq(events.endpointId, endpoints.id))
+        .innerJoin(users, eq(endpoints.userId, users.id))
+        .where(and(eq(users.plan, planId), lt(events.receivedAt, cutoff)))
+
+      const eventIds = planEvents.map((eventRow) => eventRow.id)
+      if (eventIds.length === 0) {
+        console.log(`[cleanup-events] plan=${planId} deletedEvents=0 cutoff=${cutoff.toISOString()}`)
+        continue
+      }
+
+      await db
+        .delete(deliveries)
+        .where(inArray(deliveries.eventId, eventIds))
+
+      await db
+        .delete(events)
+        .where(inArray(events.id, eventIds))
+
+      console.log(
+        `[cleanup-events] plan=${planId} deletedEvents=${eventIds.length} cutoff=${cutoff.toISOString()}`
+      )
+    }
   })
 
   console.log('Worker started — listening for delivery jobs')
@@ -19,6 +51,14 @@ async function deliverEvent(eventId: string) {
   })
 
   if (!event || event.status === 'DELIVERED') return
+
+  const [owner] = await db
+    .select({ plan: users.plan })
+    .from(users)
+    .where(eq(users.id, event.endpoint.userId))
+    .limit(1)
+
+  const maxRetries = getPlanLimits(owner?.plan ?? 'free').maxRetries
 
   // Marcar como en proceso
   await db
@@ -52,7 +92,7 @@ async function deliverEvent(eventId: string) {
 
     await db
       .update(events)
-      .set({ status: 'DELIVERED', deliveredAt: new Date() })
+      .set({ status: 'DELIVERED', deliveredAt: new Date(), })
       .where(eq(events.id, eventId))
 
   } catch (err) {
@@ -68,7 +108,7 @@ async function deliverEvent(eventId: string) {
     await db
       .update(events)
       .set({
-        status:    attemptNumber >= 7 ? 'FAILED' : 'PENDING',
+        status:    attemptNumber >= maxRetries ? 'FAILED' : 'PENDING',
         lastError: error,
       })
       .where(eq(events.id, eventId))

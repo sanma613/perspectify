@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "main": "./src/index.ts",
   "dependencies": {
+    "@perspectify/db": "*",
     "pg-boss": "^9.0.0"
   }
 }

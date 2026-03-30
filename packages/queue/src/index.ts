@@ -1,4 +1,5 @@
 import PgBoss from 'pg-boss'
+import { getPlanLimits, type PlanId } from '@perspectify/db'
 
 let boss: PgBoss | null = null
 
@@ -18,13 +19,14 @@ export interface DeliverEventPayload {
   eventId: string
 }
 
-export async function enqueueDelivery(eventId: string) {
+export async function enqueueDelivery(eventId: string, planId: PlanId) {
+  const { maxRetries } = getPlanLimits(planId)
   const queue = await getQueue()
   await queue.send(
     JOBS.DELIVER_EVENT,
     { eventId } satisfies DeliverEventPayload,
     {
-      retryLimit:   7,
+      retryLimit:   maxRetries,
       retryDelay:   5,    // primer reintento en 5s
       retryBackoff: true, // backoff exponencial automático
       expireInHours: 24,

@@ -10,6 +10,7 @@ export interface PlanLimits {
   maxEndpoints: number
   retentionDays: number
   maxRetries: number
+  maxReplays: number
   alertsEnabled: boolean
   replayEnabled: boolean
 }
@@ -20,6 +21,7 @@ export const PLANS: Record<PlanId, PlanLimits> = {
     maxEndpoints:      1,
     retentionDays:     1,      // 24h — el dolor que los mueve a pagar
     maxRetries:        3,
+    maxReplays:        3,
     alertsEnabled:     false,
     replayEnabled:     false,  // ven el botón pero no pueden usarlo
   },
@@ -28,6 +30,7 @@ export const PLANS: Record<PlanId, PlanLimits> = {
     maxEndpoints:      3,
     retentionDays:     30,
     maxRetries:        7,
+    maxReplays:        -1,
     alertsEnabled:     true,
     replayEnabled:     true,
   },
@@ -36,6 +39,7 @@ export const PLANS: Record<PlanId, PlanLimits> = {
     maxEndpoints:      10,
     retentionDays:     90,
     maxRetries:        7,
+    maxReplays:        -1,
     alertsEnabled:     true,
     replayEnabled:     true,
   },
@@ -44,6 +48,7 @@ export const PLANS: Record<PlanId, PlanLimits> = {
     maxEndpoints:      -1,     // -1 = ilimitado
     retentionDays:     365,
     maxRetries:        7,
+    maxReplays:        -1,
     alertsEnabled:     true,
     replayEnabled:     true,
   },

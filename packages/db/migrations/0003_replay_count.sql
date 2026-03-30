@@ -1,0 +1,2 @@
+ALTER TABLE "events"
+ADD COLUMN IF NOT EXISTS "replay_count" integer DEFAULT 0 NOT NULL;
