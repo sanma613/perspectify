@@ -1,23 +1,28 @@
 import { Hono } from 'hono'
 import { db, endpoints, events, users, getPlanLimits, isUnlimited } from '@perspectify/db'
 import { enqueueDelivery } from '@perspectify/queue'
-import { eq, and, gte, count } from 'drizzle-orm'
+import { eq, and, gte, count, sql } from 'drizzle-orm'
 import { verifyStripeSignature } from '../lib/verify-signature'
 import { decrypt } from '../lib/encryption'
-import { hashWebhookToken } from '../lib/webhook-token'
 
 export const webhookRoutes = new Hono()
 
-// POST /webhook/:token
-webhookRoutes.post('/:token', async (c) => {
-  const token = c.req.param('token')
-  const tokenHash = hashWebhookToken(token)
+// POST /webhook/:token_hash
+webhookRoutes.post('/:tokenHash', async (c) => {
+  const tokenHash = c.req.param('tokenHash')
   const signature = c.req.header('stripe-signature') ?? ''
   const rawBody = await c.req.text()
+  const payloadSize = Buffer.byteLength(rawBody, 'utf8')
+  const sourceHeaders = Object.fromEntries(c.req.raw.headers.entries())
 
   // 1. Buscar endpoint por hash de token
   const [endpoint] = await db
-    .select()
+    .select({
+      id: endpoints.id,
+      userId: endpoints.userId,
+      secret: endpoints.secret,
+      destination: endpoints.destination,
+    })
     .from(endpoints)
     .where(eq(endpoints.tokenHash, tokenHash))
     .limit(1)
@@ -67,17 +72,13 @@ webhookRoutes.post('/:token', async (c) => {
   const limits = getPlanLimits(user.plan)
 
   if (!isUnlimited(limits.maxEventsPerMonth)) {
-    const startOfMonth = new Date()
-    startOfMonth.setDate(1)
-    startOfMonth.setHours(0, 0, 0, 0)
-
     const [{ total }] = await db
       .select({ total: count() })
       .from(events)
       .where(
         and(
           eq(events.endpointId, endpoint.id),
-          gte(events.receivedAt, startOfMonth)
+          gte(events.receivedAt, sql`date_trunc('month', now())`)
         )
       )
 
@@ -96,9 +97,13 @@ webhookRoutes.post('/:token', async (c) => {
       stripeId:   parsed.id,
       type:       parsed.type,
       payload:    stripeEvent as object,
+      payloadSize,
+      sourceHeaders,
+      destinationUrl: endpoint.destination,
+      providerName: 'stripe',
       status:     'PENDING',
     })
-    .returning()
+    .returning({ id: events.id })
 
   // 6. Encolar
   await enqueueDelivery(event.id, user.plan)

@@ -3,9 +3,97 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
+  --page-bg: #090909;
+  --surface-bg: #111111;
+  --surface-elevated: #1a1a1a;
+  --accent: #22c55e;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --text-primary: #ffffff;
+  --text-muted: #a1a1aa;
+  --text-subtle: #52525b;
+  --ui-border: rgba(255, 255, 255, 0.06);
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply antialiased;
+  background: var(--page-bg);
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+* {
+  border-color: var(--ui-border);
+}
+
+::selection {
+  background: rgba(16, 185, 129, 0.35);
+  color: #02100b;
+}
+
+.app-grid-bg {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: -1px -1px;
+}
+
+.noise-overlay {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.2) 0.55px, transparent 0.55px);
+  background-size: 3px 3px;
+  opacity: 0.08;
+}
+
+@media (min-width: 768px) {
+  body {
+    font-size: 17px;
+  }
+}
+
+.font-display {
+  font-family: var(--font-display), sans-serif;
+}
+
+.font-body {
+  font-family: var(--font-body), sans-serif;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  transition-duration: 200ms;
+  transition-timing-function: ease-in-out;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes confetti-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-14px) rotate(0deg);
+  }
+
+  20% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(30px) rotate(70deg);
+  }
 }

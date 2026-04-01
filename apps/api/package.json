@@ -2,15 +2,16 @@
   "name": "@perspectify/api",
   "version": "0.0.1",
   "scripts": {
-    "dev":   "bun --env-file=../../.env --watch src/index.ts",
+    "dev": "bun --env-file=../../.env --watch src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
     "start": "bun --env-file=../../.env run dist/index.js"
   },
   "dependencies": {
-    "@perspectify/db":       "*",
-    "@perspectify/queue":    "*",
-    "hono":                  "^4.0.0",
-    "@supabase/supabase-js": "^2.0.0"
+    "@perspectify/db": "*",
+    "@perspectify/queue": "*",
+    "@supabase/supabase-js": "^2.0.0",
+    "hono": "^4.0.0",
+    "resend": "^6.10.0"
   },
   "devDependencies": {
     "bun-types": "latest"

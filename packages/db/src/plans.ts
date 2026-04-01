@@ -1,56 +1,39 @@
-// packages/db/src/plans.ts
-// Fuente única de verdad para los límites de cada plan.
-// Para agregar un plan nuevo: solo agrega una entrada aquí.
-// Nada más cambia.
-
-export type PlanId = 'free' | 'starter' | 'growth' | 'pro'
+export type PlanId = 'free' | 'starter'
 
 export interface PlanLimits {
-  maxEventsPerMonth: number
-  maxEndpoints: number
-  retentionDays: number
-  maxRetries: number
-  maxReplays: number
-  alertsEnabled: boolean
-  replayEnabled: boolean
+  priceMonthly:      number   // USD
+  maxEventsPerMonth: number   // -1 = unlimited
+  maxEndpoints:      number
+  retentionDays:     number
+  maxRetries:        number   // retries after first attempt
+  maxReplays:        number   // per event lifetime, -1 = unlimited
+  alertsEnabled:     boolean  // email on failure
+  replayEnabled:     boolean
+  retentionAlerts:   boolean  // email 2 days before history deletion
 }
 
 export const PLANS: Record<PlanId, PlanLimits> = {
   free: {
-    maxEventsPerMonth: 2_500,
+    priceMonthly:      0,
+    maxEventsPerMonth: 1_000,
     maxEndpoints:      1,
-    retentionDays:     1,      // 24h — el dolor que los mueve a pagar
+    retentionDays:     2,
     maxRetries:        3,
     maxReplays:        3,
     alertsEnabled:     false,
-    replayEnabled:     false,  // ven el botón pero no pueden usarlo
+    replayEnabled:     true,
+    retentionAlerts:   false,
   },
   starter: {
-    maxEventsPerMonth: 100_000,
-    maxEndpoints:      3,
+    priceMonthly:      19,
+    maxEventsPerMonth: 50_000,
+    maxEndpoints:      5,
     retentionDays:     30,
     maxRetries:        7,
     maxReplays:        -1,
     alertsEnabled:     true,
     replayEnabled:     true,
-  },
-  growth: {
-    maxEventsPerMonth: 500_000,
-    maxEndpoints:      10,
-    retentionDays:     90,
-    maxRetries:        7,
-    maxReplays:        -1,
-    alertsEnabled:     true,
-    replayEnabled:     true,
-  },
-  pro: {
-    maxEventsPerMonth: 2_000_000,
-    maxEndpoints:      -1,     // -1 = ilimitado
-    retentionDays:     365,
-    maxRetries:        7,
-    maxReplays:        -1,
-    alertsEnabled:     true,
-    replayEnabled:     true,
+    retentionAlerts:   true,
   },
 }
 

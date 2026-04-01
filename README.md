@@ -5,15 +5,15 @@ reintenta con backoff exponencial, y te deja rescatar cualquier fallo con un cli
 
 ## Stack
 
-| Pieza       | Tecnología           | Hosting       | Costo |
-|-------------|----------------------|---------------|-------|
-| Backend     | Hono + Bun           | Render free   | $0    |
-| Cron        | Bun script           | Render free   | $0    |
-| Frontend    | Next.js              | Vercel free   | $0    |
-| Base de datos | PostgreSQL          | Supabase free | $0    |
-| Queue       | pg-boss              | Supabase DB   | $0    |
-| ORM         | Drizzle              | —             | $0    |
-| Auth        | Supabase Auth        | Supabase free | $0    |
+| Pieza         | Tecnología    | Hosting       | Costo |
+| ------------- | ------------- | ------------- | ----- |
+| Backend       | Hono + Bun    | Render free   | $0    |
+| Cron          | Bun script    | Render free   | $0    |
+| Frontend      | Next.js       | Vercel free   | $0    |
+| Base de datos | PostgreSQL    | Supabase free | $0    |
+| Queue         | pg-boss       | Supabase DB   | $0    |
+| ORM           | Drizzle       | —             | $0    |
+| Auth          | Supabase Auth | Supabase free | $0    |
 
 ## Estructura
 
@@ -23,7 +23,7 @@ perspectify/
     api/                        → Hono — webhook handler + worker
       src/
         routes/
-          webhook.ts            → POST /webhook/:token
+          webhook.ts            → POST /webhook/:token_hash
           events.ts             → GET /events, POST /events/:id/replay
         cron/
           keepalive.ts          → ping API + Supabase cada 5min
@@ -34,7 +34,7 @@ perspectify/
         lib/supabase/
           client.ts             → cliente browser
           server.ts             → cliente server components
-        middleware.ts           → protege /dashboard con Supabase Auth
+        proxy.ts                → protege /dashboard con Supabase Auth
   packages/
     db/                         → Drizzle schema + cliente
     queue/                      → pg-boss setup
@@ -65,7 +65,7 @@ bun dev
 
 ```
 Stripe
-  → POST /webhook/:token
+  → POST /webhook/:token_hash
     → verifica firma HMAC
     → idempotencia por stripeId
     → persiste evento (status: PENDING)
@@ -87,17 +87,20 @@ Dashboard
 ## Deploy
 
 ### Supabase
+
 1. Crear proyecto en supabase.com
 2. Copiar `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
 3. Correr migraciones: `bun run --cwd packages/db db:migrate`
 
 ### Render (API + Cron)
+
 1. Conectar repo en render.com
 2. Render detecta `render.yaml` automáticamente
 3. Agregar variables de entorno en el dashboard de Render
 4. Deploy automático en cada push a main
 
 ### Vercel (Web)
+
 1. Importar repo en vercel.com
 2. Root directory: `apps/web`
 3. Agregar variables de entorno `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -105,9 +108,9 @@ Dashboard
 
 ## Escalar cuando sea el momento
 
-| Ahora          | Después             |
-|----------------|---------------------|
-| Render free    | Render paid / Fly.io |
-| Supabase free  | Supabase Pro        |
-| pg-boss        | BullMQ + Redis      |
-| Drizzle        | Drizzle (no cambia) |
+| Ahora         | Después              |
+| ------------- | -------------------- |
+| Render free   | Render paid / Fly.io |
+| Supabase free | Supabase Pro         |
+| pg-boss       | BullMQ + Redis       |
+| Drizzle       | Drizzle (no cambia)  |

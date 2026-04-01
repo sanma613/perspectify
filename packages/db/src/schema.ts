@@ -1,8 +1,8 @@
-import { pgTable, text, integer, timestamp, jsonb, pgEnum } from 'drizzle-orm/pg-core'
+import { pgTable, text, integer, timestamp, jsonb, pgEnum, index, boolean } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 
 // ── Enums ─────────────────────────────────────────────────
-export const planEnum = pgEnum('plan', ['free', 'starter', 'growth', 'pro'])
+export const planEnum = pgEnum('plan', ['free', 'starter'])
 
 export const eventStatusEnum = pgEnum('event_status', [
   'PENDING',    // recibido, esperando entrega
@@ -22,6 +22,7 @@ export const users = pgTable('users', {
   id:        text('id').primaryKey(),
   email:     text('email').notNull().unique(),
   plan:      planEnum('plan').default('free').notNull(),
+  freeReplaysUsed: integer('free_replays_used').default(0).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
@@ -47,24 +48,47 @@ export const events = pgTable('events', {
   stripeId:    text('stripe_id').notNull().unique(), // idempotencia
   type:        text('type').notNull(),               // payment_intent.succeeded etc
   payload:     jsonb('payload').notNull(),           // body completo del webhook
+  payloadSize: integer('payload_size'),
+  sourceHeaders: jsonb('source_headers'),
+  destinationUrl: text('destination_url'),
+  providerName: text('provider_name'),
   status:      eventStatusEnum('status').default('PENDING').notNull(),
   attempts:    integer('attempts').default(0).notNull(),
   replayCount: integer('replay_count').default(0).notNull(),
+  lastAttemptStatus: integer('last_attempt_status'),
   lastError:   text('last_error'),
+  failureAlertSent: boolean('failure_alert_sent').default(false).notNull(),
+  retentionAlertSent: boolean('retention_alert_sent').default(false).notNull(),
   receivedAt:  timestamp('received_at').defaultNow().notNull(),
   deliveredAt: timestamp('delivered_at'),
-})
+}, (table) => ({
+  eventsEndpointReceivedAtIdx: index('events_endpoint_received_at_idx').on(table.endpointId, table.receivedAt),
+  eventsStatusFailureAlertIdx: index('events_status_failure_alert_idx').on(table.status, table.failureAlertSent),
+  eventsStatusRetentionAlertIdx: index('events_status_retention_alert_idx').on(table.status, table.retentionAlertSent),
+}))
 
 // ── Deliveries ────────────────────────────────────────────
 // Cada intento de entrega al destino del cliente
 export const deliveries = pgTable('deliveries', {
   id:          text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  eventId:     text('event_id').notNull().references(() => events.id),
+  eventId:     text('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
   attempt:     integer('attempt').notNull(),
   status:      deliveryStatusEnum('status').notNull(),
   statusCode:  integer('status_code'),
   error:       text('error'),
   attemptedAt: timestamp('attempted_at').defaultNow().notNull(),
+})
+
+// ── Event Attempts ───────────────────────────────────────
+// Historial detallado de intentos (estado HTTP + body)
+export const eventAttempts = pgTable('event_attempts', {
+  id:           text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eventId:      text('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
+  attempt:      integer('attempt').notNull(),
+  status:       integer('status'),
+  responseBody: text('response_body'),
+  error:        text('error'),
+  createdAt:    timestamp('created_at').defaultNow().notNull(),
 })
 
 // ── Relations ─────────────────────────────────────────────
@@ -80,8 +104,13 @@ export const endpointsRelations = relations(endpoints, ({ one, many }) => ({
 export const eventsRelations = relations(events, ({ one, many }) => ({
   endpoint:   one(endpoints, { fields: [events.endpointId], references: [endpoints.id] }),
   deliveries: many(deliveries),
+  eventAttempts: many(eventAttempts),
 }))
 
 export const deliveriesRelations = relations(deliveries, ({ one }) => ({
   event: one(events, { fields: [deliveries.eventId], references: [events.id] }),
+}))
+
+export const eventAttemptsRelations = relations(eventAttempts, ({ one }) => ({
+  event: one(events, { fields: [eventAttempts.eventId], references: [events.id] }),
 }))
