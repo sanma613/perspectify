@@ -1,5 +1,11 @@
 export function getApiBaseUrl() {
-  return process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
+  const publicApiUrl = process.env.NEXT_PUBLIC_API_URL
+
+  if (process.env.NODE_ENV === 'production' && !publicApiUrl) {
+    throw new Error('Missing NEXT_PUBLIC_API_URL in production environment')
+  }
+
+  return publicApiUrl ?? 'http://localhost:3001'
 }
 
 export async function apiFetch<T>(
