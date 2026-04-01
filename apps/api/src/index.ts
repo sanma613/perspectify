@@ -10,14 +10,48 @@ import { startWorker } from './worker'
 
 const app = new Hono()
 
-const allowedOrigins = new Set(
-  [
-    process.env.WEB_URL,
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    'http://[::1]:3000',
-  ].filter((value): value is string => Boolean(value))
-)
+const allowVercelPreviews = process.env.ALLOW_VERCEL_PREVIEWS !== 'false'
+
+function normalizeOrigin(value?: string | null): string | null {
+  if (!value) return null
+  try {
+    return new URL(value).origin
+  } catch {
+    return null
+  }
+}
+
+function parseOrigins(value?: string): string[] {
+  if (!value) return []
+  return value
+    .split(',')
+    .map((entry) => normalizeOrigin(entry.trim()))
+    .filter((entry): entry is string => Boolean(entry))
+}
+
+const allowedOrigins = new Set([
+  ...parseOrigins(process.env.WEB_URL),
+  ...parseOrigins(process.env.APP_URL),
+  ...parseOrigins(process.env.CORS_ORIGINS),
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://[::1]:3000',
+])
+
+function isAllowedOrigin(origin: string): boolean {
+  const normalizedOrigin = normalizeOrigin(origin)
+  if (!normalizedOrigin) return false
+  if (allowedOrigins.has(normalizedOrigin)) return true
+
+  if (!allowVercelPreviews) return false
+
+  try {
+    const hostname = new URL(normalizedOrigin).hostname
+    return hostname.endsWith('.vercel.app')
+  } catch {
+    return false
+  }
+}
 
 app.use('*', async (c, next) => {
   const startedAt = Date.now()
@@ -49,7 +83,7 @@ app.use(
   cors({
     origin: (origin) => {
       if (!origin) return '*'
-      return allowedOrigins.has(origin) ? origin : null
+      return isAllowedOrigin(origin) ? origin : null
     },
     allowHeaders: ['Content-Type', 'Authorization'],
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
