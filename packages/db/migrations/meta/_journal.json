@@ -50,6 +50,13 @@
       "when": 1775289600000,
       "tag": "0007_restore_rls_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1775220299000,
+      "tag": "0008_realtime_policy",
+      "breakpoints": true
     }
   ]
 }

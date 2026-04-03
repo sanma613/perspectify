@@ -39,8 +39,11 @@ interface UsePaginatedEventsResult {
   error: string | null
   totalCount: number
   pendingNewCount: number
+  pendingCount: number
+  showPendingBanner: boolean
   loadMore: () => Promise<void>
   revealNewEvents: () => void
+  flushPendingEvents: () => Promise<void>
   patchEvent: (eventId: string, patch: EventPatch | ((event: EventResponse) => EventResponse)) => void
 }
 
@@ -186,10 +189,16 @@ export function usePaginatedEvents({
   const [hasMore, setHasMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [totalCount, setTotalCount] = useState(0)
+  const [pendingCount, setPendingCount] = useState(0)
+  const [showPendingBanner, setShowPendingBanner] = useState(false)
   const nextCursorRef = useRef<EventsCursor | null>(null)
   const eventsRef = useRef<EventResponse[]>([])
   const headRefreshTimeoutRef = useRef<number | null>(null)
+  const pendingEventsRef = useRef<Array<string>>([])
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hasLoadedOnceRef = useRef(false)
+  const FLUSH_INTERVAL_MS = 1000
+  const BURST_THRESHOLD = 5
 
   useEffect(() => {
     eventsRef.current = events
@@ -448,7 +457,7 @@ export function usePaginatedEvents({
     [hasMore, totalCount, updateCache]
   )
 
-  const syncHead = useCallback(async () => {
+  const syncHead = useCallback(async (forceReveal = false) => {
     if (activeEndpointIds.length === 0) return
 
     try {
@@ -471,7 +480,7 @@ export function usePaginatedEvents({
           return next
         }
 
-        if (isNearTop()) {
+        if (forceReveal || isNearTop()) {
           const merged = dedupeEvents([...unseen, ...next])
           updateCache(merged, nextCursorRef.current, hasMore, page.totalCount)
           return merged
@@ -486,11 +495,32 @@ export function usePaginatedEvents({
     }
   }, [activeEndpointIds.length, fetchPage, hasMore, updateCache])
 
+  const resetPendingState = useCallback(() => {
+    pendingEventsRef.current = []
+    setPendingCount(0)
+    setShowPendingBanner(false)
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current)
+      flushTimerRef.current = null
+    }
+  }, [])
+
+  const flushPendingEvents = useCallback(async () => {
+    if (pendingEventsRef.current.length === 0) {
+      resetPendingState()
+      return
+    }
+
+    resetPendingState()
+    await syncHead(true)
+  }, [resetPendingState, syncHead])
+
   useEffect(() => {
     if (!activeEndpointIdsKey) return
 
     const supabase = createClient()
     const channelName = `events-head-${activeEndpointIds.join('-')}-${needsRescue ? 'rescue' : 'all'}`
+    let channel: ReturnType<typeof supabase.channel> | null = null
 
     const scheduleHeadSync = () => {
       if (headRefreshTimeoutRef.current) return
@@ -500,28 +530,100 @@ export function usePaginatedEvents({
       }, 200)
     }
 
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'events',
-          filter: `endpoint_id=in.(${activeEndpointIds.join(',')})`,
-        },
-        scheduleHeadSync
-      )
-      .subscribe()
+    const handleIncomingInsert = (payload: { new: { id?: string } }) => {
+      pendingEventsRef.current.push(payload.new?.id ?? crypto.randomUUID())
+      const count = pendingEventsRef.current.length
+      setPendingCount(count)
 
-    return () => {
+      if (count > BURST_THRESHOLD) {
+        setShowPendingBanner(true)
+        if (flushTimerRef.current) {
+          clearTimeout(flushTimerRef.current)
+          flushTimerRef.current = null
+        }
+        return
+      }
+
+      if (!flushTimerRef.current) {
+        flushTimerRef.current = setTimeout(() => {
+          flushTimerRef.current = null
+          void flushPendingEvents()
+        }, FLUSH_INTERVAL_MS)
+      }
+    }
+
+    const subscribe = () => {
+      if (channel || document.hidden) return
+
+      channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'events',
+            filter: `endpoint_id=in.(${activeEndpointIds.join(',')})`,
+          },
+          (payload) => {
+            if (payload.eventType === 'INSERT') {
+              handleIncomingInsert(payload as { new: { id?: string } })
+              return
+            }
+
+            scheduleHeadSync()
+          }
+        )
+        .subscribe()
+    }
+
+    const unsubscribe = () => {
+      if (!channel) return
+      void supabase.removeChannel(channel)
+      channel = null
+    }
+
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        unsubscribe()
+        return
+      }
+
+      resetPendingState()
       if (headRefreshTimeoutRef.current) {
         window.clearTimeout(headRefreshTimeoutRef.current)
         headRefreshTimeoutRef.current = null
       }
-      void supabase.removeChannel(channel)
+      void syncHead()
+      subscribe()
     }
-  }, [activeEndpointIds, needsRescue, syncHead])
+
+    subscribe()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      if (headRefreshTimeoutRef.current) {
+        window.clearTimeout(headRefreshTimeoutRef.current)
+        headRefreshTimeoutRef.current = null
+      }
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current)
+        flushTimerRef.current = null
+      }
+      resetPendingState()
+      unsubscribe()
+    }
+  }, [
+    BURST_THRESHOLD,
+    FLUSH_INTERVAL_MS,
+    activeEndpointIds,
+    activeEndpointIdsKey,
+    flushPendingEvents,
+    needsRescue,
+    resetPendingState,
+    syncHead,
+  ])
 
   return {
     events,
@@ -531,8 +633,11 @@ export function usePaginatedEvents({
     error,
     totalCount,
     pendingNewCount: bufferedEvents.length,
+    pendingCount,
+    showPendingBanner,
     loadMore,
     revealNewEvents,
+    flushPendingEvents,
     patchEvent,
   }
 }

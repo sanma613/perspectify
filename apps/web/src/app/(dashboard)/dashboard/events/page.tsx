@@ -1,19 +1,19 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Copy } from 'lucide-react'
-import type { EventResponse, EventsCursor, PaginatedEventsResponse } from '../../../../lib/api-types'
+import { useMemo, useState } from 'react'
+import { ArrowDown, ChevronDown, Copy } from 'lucide-react'
+import type { EventResponse } from '../../../../lib/api-types'
 import { getAccessToken } from '../../../../lib/access-token'
 import { apiFetch } from '../../../../lib/http'
+import { usePaginatedEvents } from '../../../../lib/use-paginated-events'
 import { useDashboardData } from '../../../../lib/use-dashboard-data'
 import { useMobile } from '../../../../lib/hooks/use-mobile'
+import { Skeleton } from '../../../../components/skeleton'
 import { BottomSheet } from '../_components/ui/bottom-sheet'
 import { EmptyState } from '../_components/ui/empty-state'
 import { EventRow } from '../_components/ui/event-row'
 import { SlideOver } from '../_components/ui/slide-over'
 import { UpgradeGate } from '../_components/ui/upgrade-gate'
-
-const PAGE_SIZE = 30
 
 type DateFilter = '24h' | '7d' | 'custom'
 type StatusFilter = 'DELIVERED' | 'FAILED' | 'PENDING' | 'DELIVERING'
@@ -105,12 +105,6 @@ export default function EventsPage() {
   const isMobile = useMobile()
   const { me, endpoints, loading: dashboardLoading, error: dashboardError } = useDashboardData()
 
-  const [items, setItems] = useState<EventResponse[]>([])
-  const [nextCursor, setNextCursor] = useState<EventsCursor | null>(null)
-  const [hasMore, setHasMore] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [rescueLoading, setRescueLoading] = useState<string | null>(null)
   const [payloadOpen, setPayloadOpen] = useState(false)
@@ -123,68 +117,34 @@ export default function EventsPage() {
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
 
-  const fetchPage = useCallback(
-    async (cursor?: EventsCursor | null) => {
-      const token = await getAccessToken()
-      const params = new URLSearchParams()
-      params.set('limit', String(PAGE_SIZE))
-      if (endpointFilter !== 'all') {
-        params.set('endpointId', endpointFilter)
-      }
-      if (cursor) {
-        params.set('cursorReceivedAt', cursor.cursorReceivedAt)
-        params.set('cursorId', cursor.cursorId)
-      }
-
-      return apiFetch<PaginatedEventsResponse>(`/events?${params.toString()}`, token)
-    },
-    [endpointFilter]
-  )
-
-  useEffect(() => {
-    async function loadInitial() {
-      setIsLoading(true)
-      setError(null)
-      try {
-        const page = await fetchPage(null)
-        setItems(page.items)
-        setHasMore(page.hasMore)
-        setNextCursor(page.nextCursor)
-      } catch (fetchError) {
-        setError(fetchError instanceof Error ? fetchError.message : 'Could not load events.')
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    void loadInitial()
-  }, [fetchPage])
-
-  async function loadMore() {
-    if (!hasMore || !nextCursor || isLoadingMore) return
-    setIsLoadingMore(true)
-    try {
-      const page = await fetchPage(nextCursor)
-      setItems((current) => [...current, ...page.items])
-      setHasMore(page.hasMore)
-      setNextCursor(page.nextCursor)
-    } finally {
-      setIsLoadingMore(false)
-    }
-  }
+  const selectedEndpointIds = endpointFilter === 'all' ? [] : [endpointFilter]
+  const {
+    events: items,
+    loading: isLoading,
+    loadingMore: isLoadingMore,
+    hasMore,
+    error: eventsError,
+    loadMore,
+    patchEvent,
+    showPendingBanner,
+    pendingCount,
+    flushPendingEvents,
+  } = usePaginatedEvents({
+    allEndpointIds: endpoints.map((endpoint) => endpoint.id),
+    selectedEndpointIds,
+    needsRescue: false,
+  })
 
   async function rescueEvent(eventId: string) {
     setRescueLoading(eventId)
     try {
       const token = await getAccessToken()
       await apiFetch(`/events/${eventId}/replay`, token, { method: 'POST' })
-      setItems((current) =>
-        current.map((event) =>
-          event.id === eventId
-            ? { ...event, status: 'PENDING', replayCount: event.replayCount + 1 }
-            : event
-        )
-      )
+      patchEvent(eventId, (event) => ({
+        ...event,
+        status: 'PENDING',
+        replayCount: event.replayCount + 1,
+      }))
     } finally {
       setRescueLoading(null)
     }
@@ -215,11 +175,11 @@ export default function EventsPage() {
     (dateFilter === '7d' ? 0 : 1)
 
   if (dashboardLoading || isLoading) {
-    return <div className="h-40 animate-pulse rounded-xl border border-white/10 bg-[#111111]" />
+    return <EventsPageSkeleton />
   }
 
-  if (dashboardError || error || !me) {
-    return <p className="text-sm text-[#ef4444]">{dashboardError ?? error ?? 'Could not load events.'}</p>
+  if (dashboardError || eventsError || !me) {
+    return <p className="text-sm text-[#ef4444]">{dashboardError ?? eventsError ?? 'Could not load events.'}</p>
   }
 
   if (items.length === 0) {
@@ -340,6 +300,24 @@ export default function EventsPage() {
           ) : null}
         </div>
       )}
+
+      {showPendingBanner ? (
+        <button
+          onClick={() => {
+            void flushPendingEvents().then(() => {
+              window.scrollTo({ top: 0, behavior: 'smooth' })
+            })
+          }}
+          className="animate-pulse-once flex w-full items-center justify-between rounded-xl border border-green-500/25 bg-green-500/8 px-4 py-3 text-sm font-medium text-green-400 transition-colors hover:bg-green-500/12"
+          type="button"
+        >
+          <div className="flex items-center gap-2">
+            <ArrowDown size={16} />
+            <span>{pendingCount} new event{pendingCount !== 1 ? 's' : ''} received</span>
+          </div>
+          <span className="text-xs text-green-500/60">Click to load</span>
+        </button>
+      ) : null}
 
       {filtered.length === 0 ? (
         <EmptyState description="No events match selected filters." title="No matches" />
@@ -505,6 +483,40 @@ export default function EventsPage() {
           ) : null}
         </SlideOver>
       )}
+    </section>
+  )
+}
+
+function EventsPageSkeleton() {
+  return (
+    <section className="space-y-4">
+      <div>
+        <Skeleton className="h-8 w-40" />
+        <Skeleton className="mt-2 h-4 w-72" />
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-[#111111] p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Skeleton className="h-11 w-24 rounded-full" />
+          <Skeleton className="h-11 w-20 rounded-full" />
+          <Skeleton className="h-11 w-20 rounded-full" />
+          <Skeleton className="h-11 w-40 rounded-lg" />
+          <Skeleton className="h-11 w-16 rounded-full" />
+          <Skeleton className="h-11 w-16 rounded-full" />
+        </div>
+      </div>
+
+      <div className="space-y-2 rounded-xl border border-white/10 bg-[#111111] p-3">
+        {[1, 2, 3, 4, 5].map((item) => (
+          <div className="flex items-center gap-3 border-b border-white/5 py-3 last:border-b-0" key={`events-page-skeleton-${item}`}>
+            <Skeleton className="h-2 w-2 rounded-full" />
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="ml-auto h-4 w-20" />
+            <Skeleton className="h-4 w-14" />
+            <Skeleton className="h-4 w-4" />
+          </div>
+        ))}
+      </div>
     </section>
   )
 }

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '../../../../lib/supabase/client'
 import { useDashboardData } from '../../../../lib/use-dashboard-data'
 import { useMobile } from '../../../../lib/hooks/use-mobile'
+import { Skeleton } from '../../../../components/skeleton'
 import { BottomSheet } from '../_components/ui/bottom-sheet'
 import { PlanBadge } from '../_components/ui/plan-badge'
 import { UpgradeCTA } from '../_components/ui/upgrade-cta'
@@ -26,7 +27,7 @@ export default function SettingsPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   if (loading) {
-    return <div className="h-40 animate-pulse rounded-xl border border-white/10 bg-[#111111]" />
+    return <SettingsPageSkeleton />
   }
 
   if (error || !me) {
@@ -234,6 +235,64 @@ export default function SettingsPage() {
           </button>
         </div>
       </BottomSheet>
+    </section>
+  )
+}
+
+function SettingsPageSkeleton() {
+  return (
+    <section className="space-y-4">
+      <header>
+        <Skeleton className="h-8 w-28" />
+      </header>
+
+      <section className="rounded-xl border border-white/10 bg-[#111111] p-4">
+        <Skeleton className="h-4 w-20" />
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <div className="space-y-1">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-11 w-full rounded-lg" />
+          </div>
+          <div className="space-y-1">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="h-11 w-full rounded-lg" />
+          </div>
+        </div>
+        <Skeleton className="mt-3 h-11 w-32 rounded-lg" />
+
+        <div className="mt-5 border-t border-white/10 pt-4">
+          <Skeleton className="h-4 w-36" />
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <Skeleton className="h-11 w-full rounded-lg" />
+            <Skeleton className="h-11 w-full rounded-lg" />
+          </div>
+          <Skeleton className="mt-3 h-11 w-36 rounded-lg" />
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-white/10 bg-[#111111] p-4">
+        <Skeleton className="h-4 w-28" />
+        <Skeleton className="mt-3 h-7 w-28 rounded-full" />
+
+        <div className="mt-4 space-y-2">
+          <Skeleton className="h-4 w-72 max-w-full" />
+          <Skeleton className="h-4 w-64 max-w-full" />
+          <Skeleton className="h-4 w-52 max-w-full" />
+          <Skeleton className="h-4 w-56 max-w-full" />
+        </div>
+
+        <div className="my-4 h-px bg-white/10" />
+
+        <Skeleton className="h-4 w-32" />
+        <div className="mt-2 space-y-2">
+          <Skeleton className="h-4 w-64 max-w-full" />
+          <Skeleton className="h-4 w-56 max-w-full" />
+          <Skeleton className="h-4 w-48 max-w-full" />
+          <Skeleton className="h-4 w-44 max-w-full" />
+        </div>
+
+        <Skeleton className="mt-4 h-11 w-44 rounded-lg" />
+      </section>
     </section>
   )
 }

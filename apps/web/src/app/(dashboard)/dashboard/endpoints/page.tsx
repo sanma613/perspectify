@@ -8,6 +8,7 @@ import { getAccessToken } from '../../../../lib/access-token'
 import { ApiError, apiFetch, getApiBaseUrl } from '../../../../lib/http'
 import { useDashboardData } from '../../../../lib/use-dashboard-data'
 import { useMobile } from '../../../../lib/hooks/use-mobile'
+import { Skeleton } from '../../../../components/skeleton'
 import { CreateEndpointForm } from '../_components/create-endpoint-form'
 import { BottomSheet } from '../_components/ui/bottom-sheet'
 import { ConfirmModal } from '../_components/ui/confirm-modal'
@@ -125,7 +126,7 @@ export default function EndpointsPage() {
   }, [showCreate, isMobile])
 
   if (loading) {
-    return <div className="h-40 animate-pulse rounded-xl border border-white/10 bg-[#111111]" />
+    return <EndpointsPageSkeleton />
   }
 
   if (error || !me) {
@@ -696,6 +697,46 @@ export default function EndpointsPage() {
           </section>
         </>
       ) : null}
+    </section>
+  )
+}
+
+function EndpointsPageSkeleton() {
+  return (
+    <section className="space-y-4">
+      <header className="flex items-center justify-between gap-3">
+        <Skeleton className="h-8 w-40" />
+        <Skeleton className="h-11 w-32 rounded-lg" />
+      </header>
+
+      <div className="rounded-xl border border-white/10 bg-[#111111] p-4">
+        <Skeleton className="h-4 w-36" />
+        <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto]">
+          <Skeleton className="h-11 w-full rounded-lg" />
+          <Skeleton className="h-11 w-24 rounded-lg" />
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {[1, 2, 3].map((item) => (
+          <article className="rounded-xl border border-white/10 bg-[#111111] p-4" key={`endpoints-skeleton-${item}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-6 w-40" />
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-4 w-64 max-w-full" />
+                <Skeleton className="h-4 w-56 max-w-full" />
+              </div>
+              <div className="hidden gap-2 md:flex">
+                <Skeleton className="h-11 w-24 rounded-lg" />
+                <Skeleton className="h-11 w-20 rounded-lg" />
+                <Skeleton className="h-11 w-24 rounded-lg" />
+              </div>
+              <Skeleton className="h-11 w-11 rounded-lg md:hidden" />
+            </div>
+          </article>
+        ))}
+      </div>
     </section>
   )
 }

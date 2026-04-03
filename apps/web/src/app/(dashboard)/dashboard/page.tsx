@@ -1,13 +1,15 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Copy } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowDown, Copy } from 'lucide-react'
 import type { EventResponse } from '../../../lib/api-types'
 import { getAccessToken } from '../../../lib/access-token'
 import { apiFetch } from '../../../lib/http'
+import { usePaginatedEvents } from '../../../lib/use-paginated-events'
 import { useDashboardData } from '../../../lib/use-dashboard-data'
 import { useMobile } from '../../../lib/hooks/use-mobile'
+import { Skeleton } from '../../../components/skeleton'
 import { EmptyState } from './_components/ui/empty-state'
 import { EventRow } from './_components/ui/event-row'
 import { MetricCard } from './_components/ui/metric-card'
@@ -176,27 +178,24 @@ export default function DashboardPage() {
   const isMobile = useMobile()
   const { me, endpoints, loading, error, eventsThisMonth } = useDashboardData()
 
-  const [events, setEvents] = useState<EventResponse[]>([])
-  const [eventsError, setEventsError] = useState<string | null>(null)
   const [pendingRescue, setPendingRescue] = useState<string | null>(null)
   const [rescueAllLoading, setRescueAllLoading] = useState(false)
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const rescueRef = useRef<HTMLDivElement | null>(null)
+  const endpointIds = useMemo(() => endpoints.map((endpoint) => endpoint.id), [endpoints])
 
-  useEffect(() => {
-    async function loadEvents() {
-      try {
-        const token = await getAccessToken()
-        const response = await apiFetch<{ items: EventResponse[] }>('/events?limit=30', token)
-        setEvents(response.items)
-        setLastUpdated(new Date())
-      } catch (fetchError) {
-        setEventsError(fetchError instanceof Error ? fetchError.message : 'Could not load events.')
-      }
-    }
-
-    void loadEvents()
-  }, [])
+  const {
+    events,
+    loading: eventsLoading,
+    error: eventsError,
+    patchEvent,
+    showPendingBanner,
+    pendingCount,
+    flushPendingEvents,
+  } = usePaginatedEvents({
+    allEndpointIds: endpointIds,
+    selectedEndpointIds: [],
+    needsRescue: false,
+  })
 
   const failedEvents = useMemo(() => events.filter((event) => event.status === 'FAILED'), [events])
   const deliveredEvents = useMemo(() => events.filter((event) => event.status === 'DELIVERED'), [events])
@@ -204,8 +203,8 @@ export default function DashboardPage() {
   const hasEndpoints = endpoints.length > 0
   const hasEvents = events.length > 0
 
-  if (loading) {
-    return <div className="h-40 animate-pulse rounded-xl border border-white/10 bg-[#111111]" />
+  if (loading || eventsLoading) {
+    return <DashboardSkeleton />
   }
 
   if (error || eventsError || !me) {
@@ -241,13 +240,11 @@ export default function DashboardPage() {
     try {
       const token = await getAccessToken()
       await apiFetch(`/events/${eventId}/replay`, token, { method: 'POST' })
-      setEvents((current) =>
-        current.map((event) =>
-          event.id === eventId
-            ? { ...event, status: 'PENDING', replayCount: event.replayCount + 1 }
-            : event
-        )
-      )
+      patchEvent(eventId, (event) => ({
+        ...event,
+        status: 'PENDING',
+        replayCount: event.replayCount + 1,
+      }))
     } finally {
       setPendingRescue(null)
     }
@@ -258,11 +255,13 @@ export default function DashboardPage() {
     try {
       const token = await getAccessToken()
       await apiFetch('/events/replay-all', token, { method: 'POST' })
-      setEvents((current) =>
-        current.map((event) =>
-          event.status === 'FAILED' ? { ...event, status: 'PENDING', replayCount: event.replayCount + 1 } : event
-        )
-      )
+      for (const failedEvent of failedEvents) {
+        patchEvent(failedEvent.id, (event) => ({
+          ...event,
+          status: 'PENDING',
+          replayCount: event.replayCount + 1,
+        }))
+      }
     } finally {
       setRescueAllLoading(false)
     }
@@ -272,8 +271,24 @@ export default function DashboardPage() {
     <section className="space-y-4">
       <div className="flex flex-col gap-2 rounded-full border border-[#22c55e]/40 bg-[#22c55e]/15 px-4 py-3 text-sm text-[#dcfce7] md:flex-row md:items-center md:justify-between">
         <span className="truncate">● All systems delivering</span>
-        <span className="text-xs text-[#bbf7d0]">Last updated {lastUpdated ? relative(lastUpdated.toISOString()) : 'just now'}</span>
+        <span className="text-xs text-[#bbf7d0]">Last updated {events[0]?.receivedAt ? relative(events[0].receivedAt) : 'just now'}</span>
       </div>
+
+      {showPendingBanner ? (
+        <button
+          onClick={() => {
+            void flushPendingEvents()
+          }}
+          className="animate-pulse-once flex w-full items-center justify-between rounded-xl border border-green-500/25 bg-green-500/8 px-4 py-3 text-sm font-medium text-green-400 transition-colors hover:bg-green-500/12"
+          type="button"
+        >
+          <div className="flex items-center gap-2">
+            <ArrowDown size={16} />
+            <span>{pendingCount} new event{pendingCount !== 1 ? 's' : ''} received</span>
+          </div>
+          <span className="text-xs text-green-500/60">Click to load</span>
+        </button>
+      ) : null}
 
       {!hasEvents ? (
         <WaitingForFirstEvent endpointItems={endpointItems} />
@@ -364,6 +379,44 @@ export default function DashboardPage() {
           </section>
         </>
       )}
+    </section>
+  )
+}
+
+function DashboardSkeleton() {
+  return (
+    <section className="space-y-4">
+      <Skeleton className="h-9 w-52 rounded-full" />
+
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
+        {[1, 2, 3, 4].map((item) => (
+          <div className="rounded-xl border border-white/10 bg-[#111111] p-5" key={`metric-skeleton-${item}`}>
+            <Skeleton className="mb-4 h-3 w-20" />
+            <Skeleton className="h-8 w-14" />
+            <Skeleton className="mt-3 h-3 w-24" />
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-[#111111] px-3 py-2">
+        {[1, 2, 3, 4, 5].map((item) => (
+          <div className="flex items-center gap-3 border-b border-white/5 py-4 last:border-b-0" key={`event-skeleton-${item}`}>
+            <Skeleton className="h-2 w-2 shrink-0 rounded-full" />
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="ml-auto h-4 w-20" />
+            <Skeleton className="h-4 w-14" />
+            <Skeleton className="h-4 w-4" />
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-[#111111] p-4">
+        <div className="space-y-3">
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-2 w-full rounded-full" />
+          <Skeleton className="h-3 w-32" />
+        </div>
+      </div>
     </section>
   )
 }

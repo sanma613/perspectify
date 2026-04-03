@@ -109,3 +109,18 @@ textarea {
     transform: translateY(0);
   }
 }
+
+@keyframes pulseOnce {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.animate-pulse-once {
+  animation: pulseOnce 600ms ease-in-out 1;
+}

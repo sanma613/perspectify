@@ -3,6 +3,7 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { apiFetch } from './http'
 import { getAccessToken } from './access-token'
+import { createClient } from './supabase/client'
 import type { EndpointResponse, MeResponse, PaginatedEventsResponse } from './api-types'
 
 interface DashboardDataState {
@@ -72,6 +73,81 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  useEffect(() => {
+    const userId = state.me?.id
+    const endpointIds = state.endpoints.map((endpoint) => endpoint.id)
+    if (!userId || endpointIds.length === 0) return
+
+    const supabase = createClient()
+    let channel: ReturnType<typeof supabase.channel> | null = null
+    let refreshTimeout: number | null = null
+
+    const scheduleRefresh = () => {
+      if (refreshTimeout !== null) return
+      refreshTimeout = window.setTimeout(() => {
+        refreshTimeout = null
+        void fetchDashboardData(true)
+      }, 250)
+    }
+
+    const subscribe = () => {
+      if (channel || document.hidden) return
+
+      channel = supabase
+        .channel(`dashboard-${userId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'events',
+            filter: `endpoint_id=in.(${endpointIds.join(',')})`,
+          },
+          (payload) => {
+            if (payload.eventType === 'INSERT') {
+              setState((previous) => ({
+                ...previous,
+                eventsThisMonth: previous.eventsThisMonth + 1,
+              }))
+              return
+            }
+
+            if (payload.eventType === 'UPDATE') {
+              scheduleRefresh()
+            }
+          }
+        )
+        .subscribe()
+    }
+
+    const unsubscribe = () => {
+      if (!channel) return
+      void supabase.removeChannel(channel)
+      channel = null
+    }
+
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        unsubscribe()
+        return
+      }
+
+      void fetchDashboardData(true)
+      subscribe()
+    }
+
+    subscribe()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      if (refreshTimeout !== null) {
+        window.clearTimeout(refreshTimeout)
+      }
+      unsubscribe()
+    }
+  }, [fetchDashboardData, state.endpoints, state.me?.id])
 
   const value = useMemo(
     () => ({
