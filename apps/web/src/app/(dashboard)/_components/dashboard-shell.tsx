@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Activity, Gauge, Link2, LogOut, Menu, Settings, X } from 'lucide-react'
 import { createClient } from '../../../lib/supabase/client'
 import { DashboardDataProvider, useDashboardData } from '../../../lib/use-dashboard-data'
@@ -22,6 +22,18 @@ const navItems = [
   { href: '/dashboard/endpoints', icon: Link2, label: 'Endpoints' },
   { href: '/dashboard/settings', icon: Settings, label: 'Settings' },
 ] as const
+
+function getInitials(displayName: string, email: string) {
+  const base = (displayName || email || 'User').trim()
+  if (!base) return 'U'
+
+  const parts = base.split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) {
+    return `${parts[0]?.[0] ?? ''}${parts[1]?.[0] ?? ''}`.toUpperCase()
+  }
+
+  return (parts[0] ?? 'U').slice(0, 1).toUpperCase()
+}
 
 function useSidebar() {
   const context = useContext(SidebarContext)
@@ -195,15 +207,122 @@ function DesktopSidebar({ displayName, email }: { displayName: string; email: st
 }
 
 function MobileTopBar({ displayName, email }: { displayName: string; email: string }) {
+  const router = useRouter()
+  const supabase = useMemo(() => createClient(), [])
+  const { me, eventsThisMonth } = useDashboardData()
+  const [popoverOpen, setPopoverOpen] = useState(false)
+  const avatarRef = useRef<HTMLButtonElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
+  const initials = getInitials(displayName, email)
+  const eventsMax = me?.limits.maxEventsPerMonth ?? 0
+  const usagePercent =
+    eventsMax > 0 ? Math.min((eventsThisMonth / eventsMax) * 100, 100) : 0
+
+  useEffect(() => {
+    if (!popoverOpen) return
+
+    function handleClick(e: MouseEvent) {
+      if (
+        avatarRef.current?.contains(e.target as Node) ||
+        popoverRef.current?.contains(e.target as Node)
+      ) {
+        return
+      }
+      setPopoverOpen(false)
+    }
+
+    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('touchstart', handleClick)
+
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('touchstart', handleClick)
+    }
+  }, [popoverOpen])
+
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-white/10 bg-[#111111]/[0.92] px-4 backdrop-blur-sm md:hidden">
       <p className="inline-flex h-6 items-center gap-2 font-display text-[12px] uppercase tracking-[0.24em] text-white">
         <Image alt="Perspectify" className="h-4 w-4" height={16} src="/favicon.svg" width={16} />
         Perspectify
       </p>
-      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-700 text-xs uppercase text-white">
-        {(displayName || email || 'U').slice(0, 1)}
-      </span>
+
+      <div className="relative md:hidden">
+        <button
+          ref={avatarRef}
+          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-zinc-700 text-xs font-bold text-white transition-transform active:scale-95"
+          onClick={(e) => {
+            e.stopPropagation()
+            setPopoverOpen((v) => !v)
+          }}
+          type="button"
+        >
+          {initials}
+        </button>
+
+        {popoverOpen ? (
+          <div
+            ref={popoverRef}
+            className="absolute right-0 top-[calc(100%+8px)] z-[60] min-w-[220px] rounded-2xl border border-white/10 bg-zinc-900 p-4 shadow-[0_8px_24px_rgba(0,0,0,0.4)]"
+            style={{
+              animation: 'popoverIn 150ms ease-out',
+            }}
+          >
+            <div className="mb-3 flex items-center gap-2.5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-700 text-sm font-bold text-white">
+                {initials}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-white">{displayName || 'User'}</p>
+                <p className="truncate text-xs text-zinc-500">{email}</p>
+              </div>
+            </div>
+
+            <div className="mb-3 h-px bg-white/10" />
+
+            <p className="mb-2 text-xs uppercase tracking-wide text-zinc-500">Events this month</p>
+
+            <div className="mb-1.5 h-1 rounded-full bg-white/10">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  eventsMax !== -1 && eventsThisMonth >= eventsMax
+                    ? 'bg-red-500'
+                    : eventsMax !== -1 && eventsThisMonth >= eventsMax * 0.8
+                      ? 'bg-amber-400'
+                      : 'bg-green-500'
+                }`}
+                style={{ width: `${usagePercent}%` }}
+              />
+            </div>
+
+            <p className="text-xs text-zinc-400">
+              {eventsMax === -1 ? (
+                `${eventsThisMonth.toLocaleString()} events`
+              ) : eventsThisMonth >= eventsMax ? (
+                <span className="text-red-400">Limit reached</span>
+              ) : (
+                `${eventsThisMonth.toLocaleString()} / ${eventsMax.toLocaleString()}`
+              )}
+            </p>
+
+            <div className="my-3 h-px bg-white/10" />
+
+            <button
+              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/5 hover:text-white"
+              onClick={async () => {
+                await supabase.auth.signOut()
+                setPopoverOpen(false)
+                router.push('/login')
+                router.refresh()
+              }}
+              type="button"
+            >
+              <LogOut size={16} />
+              Logout
+            </button>
+          </div>
+        ) : null}
+      </div>
     </header>
   )
 }

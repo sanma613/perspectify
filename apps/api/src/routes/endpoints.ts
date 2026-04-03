@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { db, endpoints, events, users, getPlanLimits, isUnlimited } from '@perspectify/db'
-import { and, eq, count } from 'drizzle-orm'
+import { and, eq, count, or } from 'drizzle-orm'
 import { encrypt } from '../lib/encryption'
 import { createWebhookToken } from '../lib/webhook-token'
 
@@ -95,6 +95,32 @@ endpointsRoutes.post('/', async (c) => {
     if (total >= limits.maxEndpoints) {
       return c.json({ error: 'Plan endpoint limit reached' }, 403)
     }
+  }
+
+  const existing = await db
+    .select({ id: endpoints.id, name: endpoints.name })
+    .from(endpoints)
+    .where(
+      and(
+        eq(endpoints.userId, userId),
+        or(eq(endpoints.name, name), eq(endpoints.destination, destination))
+      )
+    )
+    .limit(1)
+
+  if (existing.length > 0) {
+    const conflict = existing[0].name === name ? 'name' : 'destination'
+    return c.json(
+      {
+        error: 'conflict',
+        field: conflict,
+        message:
+          conflict === 'name'
+            ? 'An endpoint with this name already exists'
+            : 'An endpoint with this destination already exists',
+      },
+      409
+    )
   }
 
   const { token, tokenHash, tokenPrefix } = createWebhookToken()
@@ -219,6 +245,44 @@ endpointsRoutes.patch('/:id', async (c) => {
       return c.json({ error: 'secret cannot be empty' }, 400)
     }
     updates.secret = encrypt(secret)
+  }
+
+  if (updates.name || updates.destination) {
+    const nextName = updates.name
+    const nextDestination = updates.destination
+
+    const nameConflictFilter = nextName ? eq(endpoints.name, nextName) : undefined
+    const destinationConflictFilter = nextDestination
+      ? eq(endpoints.destination, nextDestination)
+      : undefined
+
+    const conflictFilter =
+      nameConflictFilter && destinationConflictFilter
+        ? or(nameConflictFilter, destinationConflictFilter)
+        : nameConflictFilter ?? destinationConflictFilter
+
+    if (conflictFilter) {
+      const existing = await db
+        .select({ id: endpoints.id, name: endpoints.name, destination: endpoints.destination })
+        .from(endpoints)
+        .where(and(eq(endpoints.userId, userId), conflictFilter))
+        .limit(1)
+
+      if (existing.length > 0 && existing[0].id !== endpointId) {
+        const conflict = nextName && existing[0].name === nextName ? 'name' : 'destination'
+        return c.json(
+          {
+            error: 'conflict',
+            field: conflict,
+            message:
+              conflict === 'name'
+                ? 'An endpoint with this name already exists'
+                : 'An endpoint with this destination already exists',
+          },
+          409
+        )
+      }
+    }
   }
 
   if (Object.keys(updates).length === 0) {

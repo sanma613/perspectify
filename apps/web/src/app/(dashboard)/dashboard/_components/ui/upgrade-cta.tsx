@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { AlertCircle, Lock, X } from 'lucide-react'
+import { useRef, useState } from 'react'
 import type { PlanId } from '../../../../../lib/capabilities'
 import { BottomSheet } from './bottom-sheet'
 
@@ -121,6 +122,27 @@ export function UpgradeCTA({
   onDismissBanner,
 }: UpgradeCTAProps) {
   const copy = getUpgradeCopy(trigger, currentUsage, limit)
+  const [tooltipOpen, setTooltipOpen] = useState(false)
+  const hideTimeoutRef = useRef<number | null>(null)
+
+  function clearHideTimeout() {
+    if (hideTimeoutRef.current !== null) {
+      window.clearTimeout(hideTimeoutRef.current)
+      hideTimeoutRef.current = null
+    }
+  }
+
+  function openTooltip() {
+    clearHideTimeout()
+    setTooltipOpen(true)
+  }
+
+  function scheduleCloseTooltip() {
+    clearHideTimeout()
+    hideTimeoutRef.current = window.setTimeout(() => {
+      setTooltipOpen(false)
+    }, 180)
+  }
 
   if (variant === 'banner') {
     return (
@@ -163,7 +185,11 @@ export function UpgradeCTA({
   }
 
   return (
-    <div className={className ?? 'group relative'}>
+    <div
+      className={className ?? 'relative'}
+      onMouseEnter={openTooltip}
+      onMouseLeave={scheduleCloseTooltip}
+    >
       <button
         className="inline-flex h-11 items-center gap-2 rounded-lg border border-white/10 bg-zinc-700 px-3 text-sm text-zinc-200"
         type="button"
@@ -171,7 +197,14 @@ export function UpgradeCTA({
         <Lock className="h-4 w-4" />
         {trigger === 'date_filter' ? 'Custom' : trigger === 'endpoint_limit' ? '+ New endpoint' : 'Rescue all'}
       </button>
-      <div className="pointer-events-none absolute right-0 top-12 z-30 hidden group-hover:block">
+
+      <div
+        className={`absolute right-0 top-[calc(100%+8px)] z-30 transition-opacity ${
+          tooltipOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+        }`}
+        onMouseEnter={openTooltip}
+        onMouseLeave={scheduleCloseTooltip}
+      >
         <TooltipCard currentUsage={currentUsage} limit={limit} trigger={trigger} />
       </div>
     </div>

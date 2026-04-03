@@ -1,12 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Edit3, MoreVertical, RotateCcw, Trash2 } from 'lucide-react'
 import type { EndpointResponse } from '../../../../lib/api-types'
+import { derivePlanCapabilities } from '../../../../lib/capabilities'
 import { getAccessToken } from '../../../../lib/access-token'
 import { apiFetch, getApiBaseUrl } from '../../../../lib/http'
 import { useDashboardData } from '../../../../lib/use-dashboard-data'
 import { useMobile } from '../../../../lib/hooks/use-mobile'
+import { CreateEndpointForm } from '../_components/create-endpoint-form'
 import { BottomSheet } from '../_components/ui/bottom-sheet'
 import { ConfirmModal } from '../_components/ui/confirm-modal'
 import { EmptyState } from '../_components/ui/empty-state'
@@ -18,15 +20,34 @@ export default function EndpointsPage() {
   const { me, endpoints, loading, error, refresh } = useDashboardData()
 
   const [showCreate, setShowCreate] = useState(false)
-  const [createName, setCreateName] = useState('Stripe -> Make production')
-  const [createDestination, setCreateDestination] = useState('')
-  const [createSecret, setCreateSecret] = useState('')
-  const [isCreating, setIsCreating] = useState(false)
   const [rotateId, setRotateId] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [pendingTokenUrl, setPendingTokenUrl] = useState<string | null>(null)
+  const [pendingTokenNote, setPendingTokenNote] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [mobileActionsEndpoint, setMobileActionsEndpoint] = useState<EndpointResponse | null>(null)
+  const createCardRef = useRef<HTMLElement>(null)
+  const createButtonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!showCreate || isMobile) return
+
+    const handleOutsideClick = (event: MouseEvent | TouchEvent) => {
+      const target = event.target
+      if (!target || !(target instanceof Node)) return
+      if (createCardRef.current?.contains(target)) return
+      if (createButtonRef.current?.contains(target)) return
+      setShowCreate(false)
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick)
+    document.addEventListener('touchstart', handleOutsideClick)
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+      document.removeEventListener('touchstart', handleOutsideClick)
+    }
+  }, [showCreate, isMobile])
 
   if (loading) {
     return <div className="h-40 animate-pulse rounded-xl border border-white/10 bg-[#111111]" />
@@ -34,30 +55,6 @@ export default function EndpointsPage() {
 
   if (error || !me) {
     return <p className="text-sm text-[#ef4444]">{error ?? 'Could not load endpoints.'}</p>
-  }
-
-  async function createEndpoint() {
-    setErrorMessage(null)
-    setIsCreating(true)
-    try {
-      const token = await getAccessToken()
-      const created = await apiFetch<{ tokenHash: string }>('/endpoints', token, {
-        method: 'POST',
-        body: JSON.stringify({
-          name: createName,
-          destination: createDestination,
-          secret: createSecret || undefined,
-        }),
-      })
-      setPendingTokenUrl(`${getApiBaseUrl()}/webhook/${created.tokenHash}`)
-      setShowCreate(false)
-      setCreateSecret('')
-      await refresh()
-    } catch (createError) {
-      setErrorMessage(createError instanceof Error ? createError.message : 'Could not create endpoint.')
-    } finally {
-      setIsCreating(false)
-    }
   }
 
   async function confirmRotate() {
@@ -69,6 +66,7 @@ export default function EndpointsPage() {
         method: 'POST',
       })
       setPendingTokenUrl(`${getApiBaseUrl()}/webhook/${rotated.tokenHash}`)
+      setPendingTokenNote('Do not forget to update this URL in Stripe to avoid missing events.')
       setRotateId(null)
       await refresh()
     } catch (rotateError) {
@@ -90,6 +88,11 @@ export default function EndpointsPage() {
   }
 
   const endpointLimitUsage = endpoints.length
+  const capabilities = derivePlanCapabilities({
+    plan: me.plan,
+    limits: me.limits,
+    endpointCount: endpoints.length,
+  })
 
   return (
     <section className="space-y-4">
@@ -102,8 +105,12 @@ export default function EndpointsPage() {
           variant={isMobile ? 'bottom-sheet' : 'tooltip'}
         >
           <button
+            ref={createButtonRef}
             className="inline-flex h-11 items-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm text-white"
-            onClick={() => setShowCreate(true)}
+            onClick={(event) => {
+              event.stopPropagation()
+              setShowCreate(true)
+            }}
             type="button"
           >
             + New endpoint
@@ -112,41 +119,22 @@ export default function EndpointsPage() {
       </header>
 
       {errorMessage ? <p className="text-sm text-[#ef4444]">{errorMessage}</p> : null}
-      {pendingTokenUrl ? <WebhookUrl url={pendingTokenUrl} /> : null}
+      {pendingTokenUrl ? <WebhookUrl note={pendingTokenNote ?? undefined} url={pendingTokenUrl} /> : null}
 
       {showCreate && !isMobile ? (
-        <article className="rounded-xl border border-white/10 bg-[#111111] p-4">
-          <h2 className="font-display text-sm uppercase tracking-[0.16em] text-[#a1a1aa]">New endpoint</h2>
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <input
-              className="h-11 rounded-lg border border-white/10 bg-[#1a1a1a] px-3 text-sm text-white"
-              onChange={(event) => setCreateName(event.target.value)}
-              placeholder="Endpoint name"
-              value={createName}
-            />
-            <input
-              className="h-11 rounded-lg border border-white/10 bg-[#1a1a1a] px-3 text-sm text-white"
-              onChange={(event) => setCreateDestination(event.target.value)}
-              placeholder="https://hooks.zapier.com/..."
-              value={createDestination}
-            />
-            <input
-              className="h-11 rounded-lg border border-white/10 bg-[#1a1a1a] px-3 text-sm text-white md:col-span-2"
-              onChange={(event) => setCreateSecret(event.target.value)}
-              placeholder="whsec_... (optional)"
-              value={createSecret}
-            />
-          </div>
-          <button
-            className="mt-3 h-11 rounded-lg bg-[#22c55e] px-4 text-sm font-medium text-[#031108]"
-            disabled={isCreating}
-            onClick={() => {
-              void createEndpoint()
+        <article className="rounded-xl border border-white/10 bg-[#111111] p-4" ref={createCardRef}>
+          <CreateEndpointForm
+            capabilities={capabilities}
+            isCapabilitiesPending={loading}
+            onClose={() => setShowCreate(false)}
+            showInlineClose
+            onCreated={async () => {
+              setPendingTokenUrl(null)
+              setPendingTokenNote(null)
+              setErrorMessage(null)
+              await refresh()
             }}
-            type="button"
-          >
-            {isCreating ? 'Creating...' : 'Create endpoint'}
-          </button>
+          />
         </article>
       ) : null}
 
@@ -206,36 +194,20 @@ export default function EndpointsPage() {
       )}
 
       <BottomSheet onClose={() => setShowCreate(false)} open={showCreate && isMobile} title="New endpoint">
-        <div className="space-y-3">
-          <input
-            className="h-11 w-full rounded-lg border border-white/10 bg-[#111111] px-3 text-sm text-white"
-            onChange={(event) => setCreateName(event.target.value)}
-            placeholder="Stripe -> Make production"
-            value={createName}
-          />
-          <input
-            className="h-11 w-full rounded-lg border border-white/10 bg-[#111111] px-3 text-sm text-white"
-            onChange={(event) => setCreateDestination(event.target.value)}
-            placeholder="https://hooks.zapier.com/..."
-            value={createDestination}
-          />
-          <input
-            className="h-11 w-full rounded-lg border border-white/10 bg-[#111111] px-3 text-sm text-white"
-            onChange={(event) => setCreateSecret(event.target.value)}
-            placeholder="whsec_..."
-            value={createSecret}
-          />
-          <button
-            className="h-11 w-full rounded-lg bg-[#22c55e] text-sm font-medium text-[#031108]"
-            disabled={isCreating}
-            onClick={() => {
-              void createEndpoint()
+        {showCreate && isMobile ? (
+          <CreateEndpointForm
+            capabilities={capabilities}
+            isCapabilitiesPending={loading}
+            onClose={() => setShowCreate(false)}
+            showInlineClose={false}
+            onCreated={async () => {
+              setPendingTokenUrl(null)
+              setPendingTokenNote(null)
+              setErrorMessage(null)
+              await refresh()
             }}
-            type="button"
-          >
-            {isCreating ? 'Creating...' : 'Create endpoint'}
-          </button>
-        </div>
+          />
+        ) : null}
       </BottomSheet>
 
       <BottomSheet

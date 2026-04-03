@@ -26,6 +26,7 @@ export function EndpointsView() {
   const [copyModalTokenHash, setCopyModalTokenHash] = useState<string | null>(null)
   const [isCopyModalOpen, setIsCopyModalOpen] = useState(false)
   const [isUpgradePlanModalOpen, setIsUpgradePlanModalOpen] = useState(false)
+  const [isCreateOpen, setIsCreateOpen] = useState(true)
 
   function maskTokenHash(value: string) {
     if (value.length <= 8) return value
@@ -167,15 +168,26 @@ export function EndpointsView() {
 
       <div className="grid gap-8 px-2 xl:grid-cols-[1.05fr_1.45fr]">
         <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-          <CreateEndpointForm
-            capabilities={capabilities}
-            isCapabilitiesPending={loading}
-            onCreated={async (webhookUrl, tokenHash) => {
-              openCopyModal(webhookUrl, tokenHash)
-              setActionSuccess('Endpoint created. Copy the secure URL in Stripe now.')
-              await refresh()
-            }}
-          />
+          {isCreateOpen ? (
+            <CreateEndpointForm
+              capabilities={capabilities}
+              isCapabilitiesPending={loading}
+              onClose={() => setIsCreateOpen(false)}
+              onCreated={async (webhookUrl, tokenHash) => {
+                openCopyModal(webhookUrl, tokenHash)
+                setActionSuccess('Endpoint created. Copy the secure URL in Stripe now.')
+                await refresh()
+              }}
+            />
+          ) : (
+            <button
+              className="inline-flex h-11 items-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm text-white transition-colors hover:bg-white/10"
+              onClick={() => setIsCreateOpen(true)}
+              type="button"
+            >
+              + New endpoint
+            </button>
+          )}
         </aside>
 
         <div className="space-y-4">
