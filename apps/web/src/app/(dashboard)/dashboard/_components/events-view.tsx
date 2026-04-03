@@ -9,6 +9,7 @@ import { usePaginatedEvents } from '../../../../lib/use-paginated-events'
 import { useDashboardData } from '../../../../lib/use-dashboard-data'
 import type { EventResponse } from '../../../../lib/api-types'
 import { ActionModal } from './action-modal'
+import { EventDetailDrawer } from './event-detail-drawer'
 import { FlashMessage } from './flash-message'
 import { OnboardingFlow } from './onboarding-flow'
 import { CopyToClipboard } from './copyToClipboard'
@@ -29,6 +30,7 @@ export function EventsView() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null)
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [detailEventId, setDetailEventId] = useState<string | null>(null)
   const [modal, setModal] = useState<ModalState>(null)
   const [hoverHintEventId, setHoverHintEventId] = useState<string | null>(null)
   const [isBulkWorking, setIsBulkWorking] = useState(false)
@@ -432,7 +434,7 @@ export function EventsView() {
                     <ArrowRight className="h-3.5 w-3.5 text-zinc-500" />
                     <span className="rounded-md bg-black/45 px-2 py-1">Perspectify</span>
                     <ArrowRight className={`h-3.5 w-3.5 ${flowLastLegClass}`} />
-                    <span className={`max-w-[280px] truncate rounded-md bg-black/45 px-2 py-1 ${flowLastLegClass}`}>{destination}</span>
+                    <span className={`max-w-[280px] truncate rounded-md bg-black/45 px-2 py-1 ${flowLastLegClass}`}>{endpointName}</span>
                   </div>
                 </div>
 
@@ -485,11 +487,11 @@ export function EventsView() {
                     className="text-xs text-zinc-400 underline hover:text-zinc-200"
                     onClick={(eventClick) => {
                       eventClick.stopPropagation()
-                      setExpandedId((value) => (value === event.id ? null : event.id))
+                      setDetailEventId(event.id)
                     }}
                     type="button"
                   >
-                    {expandedId === event.id ? 'Hide details' : 'View details'}
+                    View details
                   </button>
                 </div>
 
@@ -692,6 +694,22 @@ export function EventsView() {
         open={Boolean(modal)}
         title={modal?.title ?? ''}
         message={modal?.message ?? ''}
+      />
+
+      <EventDetailDrawer
+        open={Boolean(detailEventId)}
+        event={detailEventId ? displayEvents.find((item) => item.id === detailEventId) ?? null : null}
+        onClose={() => setDetailEventId(null)}
+        endpointNameFallback={
+          detailEventId
+            ? endpointNameMap.get(displayEvents.find((item) => item.id === detailEventId)?.endpointId ?? '') ?? null
+            : null
+        }
+        destinationFallback={
+          detailEventId
+            ? endpointMap.get(displayEvents.find((item) => item.id === detailEventId)?.endpointId ?? '') ?? null
+            : null
+        }
       />
     </section>
   )

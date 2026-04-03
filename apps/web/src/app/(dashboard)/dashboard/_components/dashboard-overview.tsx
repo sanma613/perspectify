@@ -10,6 +10,7 @@ import { usePaginatedEvents } from '../../../../lib/use-paginated-events'
 import { useDashboardData } from '../../../../lib/use-dashboard-data'
 import type { EventResponse } from '../../../../lib/api-types'
 import { ActionModal } from './action-modal'
+import { EventDetailDrawer } from './event-detail-drawer'
 import { FlashMessage } from './flash-message'
 import { OnboardingFlow } from './onboarding-flow'
 import { CopyToClipboard } from './copyToClipboard'
@@ -32,7 +33,7 @@ export function DashboardOverview() {
   const [isRescueAllWorking, setIsRescueAllWorking] = useState(false)
   const [modal, setModal] = useState<OverviewModal>(null)
   const [hoverHintEventId, setHoverHintEventId] = useState<string | null>(null)
-  const [inspectorEventId, setInspectorEventId] = useState<string | null>(null)
+  const [detailEventId, setDetailEventId] = useState<string | null>(null)
   const [attentionOnly, setAttentionOnly] = useState(false)
   const [selectedEndpointIds, setSelectedEndpointIds] = useState<string[]>([])
   const [showEndpointFilter, setShowEndpointFilter] = useState(false)
@@ -458,13 +459,13 @@ export function DashboardOverview() {
               <li
                 className="group flex cursor-pointer items-start justify-between gap-4 rounded-xl px-2 py-3 transition hover:bg-white/5"
                 key={event.id}
-                onClick={() => setInspectorEventId(event.id)}
+                onClick={() => setDetailEventId(event.id)}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(eventKey) => {
                   if (eventKey.key === 'Enter' || eventKey.key === ' ') {
                     eventKey.preventDefault()
-                    setInspectorEventId(event.id)
+                    setDetailEventId(event.id)
                   }
                 }}
               >
@@ -485,7 +486,7 @@ export function DashboardOverview() {
                       className="mt-1 text-xs text-zinc-300 underline hover:text-white font-bold"
                       onClick={(eventClick) => {
                         eventClick.stopPropagation()
-                        setInspectorEventId(event.id)
+                        setDetailEventId(event.id)
                       }}
                       type="button"
                     >
@@ -608,186 +609,21 @@ export function DashboardOverview() {
         message={modal?.message ?? ''}
       />
 
-      {inspectorEventId ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          onClick={() => setInspectorEventId(null)}
-          role="presentation"
-        >
-          <div
-            className="max-h-[85vh] w-full max-w-4xl overflow-auto rounded-2xl border border-white/10 bg-black/90 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.5)] backdrop-blur"
-            onClick={(event) => event.stopPropagation()}
-          >
-            {(() => {
-              const selected = displayEvents.find((item) => item.id === inspectorEventId)
-              if (!selected) return null
-              const destination = selected.destinationUrl ?? endpointMap.get(selected.endpointId) ?? 'Unknown destination'
-              const latestAttempt = selected.eventAttempts[0]
-              const attemptsChrono = [...selected.eventAttempts].sort((a, b) => a.attempt - b.attempt)
-              const payloadText = JSON.stringify(selected.payload ?? {}, null, 2)
-              const visualState = resolveVisualState(selected)
-              const flowLastLegClass = visualState === 'FAILED' ? 'text-red-300' : 'text-emerald-300'
-              const latestStatus = latestAttempt?.status
-              const latestTone =
-                latestStatus === null || latestStatus === undefined
-                  ? 'neutral'
-                  : latestStatus >= 400
-                    ? 'error'
-                    : 'success'
-              const latestCardClass =
-                latestTone === 'error'
-                  ? 'border-red-400/30 bg-red-500/10 text-red-200'
-                  : latestTone === 'success'
-                    ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
-                    : 'border-white/10 bg-black/40 text-zinc-300'
-              const latestTextClass =
-                latestTone === 'error'
-                  ? 'text-red-100'
-                  : latestTone === 'success'
-                    ? 'text-emerald-100'
-                    : 'text-zinc-200'
-
-              return (
-                <div className="space-y-4">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Event inspector</p>
-                      <p className="mt-1 text-lg font-semibold text-zinc-100">
-                        {readableTitle(selected.type, selected.stripeId)}
-                      </p>
-                    </div>
-                    <button
-                      className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/10"
-                      onClick={() => setInspectorEventId(null)}
-                      type="button"
-                    >
-                      Close
-                    </button>
-                  </div>
-
-                  {latestAttempt ? (
-                    <div className={`rounded-lg border p-3 text-xs ${latestCardClass}`}>
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="inline-flex items-center gap-1">
-                          <RefreshCcw className="h-3.5 w-3.5" />
-                          Latest destination response
-                        </p>
-                        {latestAttempt.responseBody || latestAttempt.error ? (
-                          <CopyToClipboard
-                            text={latestAttempt.responseBody ?? latestAttempt.error ?? ''}
-                            label="Copy response"
-                            className="inline-flex items-center gap-1 text-[11px] text-zinc-300 underline hover:text-zinc-100"
-                            iconClassName="h-3 w-3"
-                          />
-                        ) : null}
-                      </div>
-                      <p className={`mt-1 ${latestTextClass}`}>Status: {latestAttempt.status ?? 'No status'}</p>
-                      {latestAttempt.responseBody ? (
-                        <pre className={`mt-2 max-h-40 overflow-auto rounded-md border border-white/10 bg-black/40 p-2 text-[11px] ${latestTextClass}`}>
-                          {latestAttempt.responseBody}
-                        </pre>
-                      ) : latestAttempt.error ? (
-                        <p className={`mt-1 break-all ${latestTextClass}`}>{latestAttempt.error}</p>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  <div className="rounded-lg border border-white/10 bg-black/25 p-3 text-xs text-zinc-300">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400">Request journey</p>
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-                      <span className="rounded-md bg-black/45 px-2 py-1">{selected.providerName ?? 'Stripe'}</span>
-                      <ArrowRight className="h-3.5 w-3.5 text-zinc-500" />
-                      <span className="rounded-md bg-black/45 px-2 py-1">Perspectify</span>
-                      <ArrowRight className={`h-3.5 w-3.5 ${flowLastLegClass}`} />
-                      <span className={`max-w-[320px] truncate rounded-md bg-black/45 px-2 py-1 ${flowLastLegClass}`}>{destination}</span>
-                    </div>
-                    <p className="mt-2 text-[11px] uppercase tracking-[0.14em] text-zinc-400">Received at</p>
-                    <p className="mt-1 text-xs text-zinc-400">{new Date(selected.receivedAt).toLocaleString()}</p>
-                    <p className="mt-2 text-[11px] uppercase tracking-[0.14em] text-zinc-400">Source headers</p>
-                    {selected.sourceHeaders ? (
-                      <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-white/10 bg-black/45 p-2 text-[11px] text-zinc-200">
-                        {JSON.stringify(selected.sourceHeaders, null, 2)}
-                      </pre>
-                    ) : (
-                      <p className="mt-1 text-xs text-zinc-500">No headers captured.</p>
-                    )}
-                  </div>
-
-                  <div className="rounded-lg border border-white/10 bg-black/25 p-3 text-xs text-zinc-300">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400">Metadata</p>
-                    <p className="mt-1 text-xs text-zinc-400">
-                      Perspectify ID: <span className="text-zinc-100">{selected.id}</span>
-                    </p>
-                    <p className="mt-1 text-xs text-zinc-400">
-                      Payload size: <span className="text-zinc-100">{formatBytes(selected.payloadSize)}</span>
-                    </p>
-                  </div>
-
-                  <div className="rounded-lg border border-white/10 bg-black/25 p-3 text-xs text-zinc-300">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400">Attempt history</p>
-                    {attemptsChrono.length === 0 ? (
-                      <p className="mt-2 text-xs text-zinc-500">No delivery attempts recorded yet.</p>
-                    ) : (
-                      <ul className="mt-2 space-y-1.5 text-xs text-zinc-400">
-                        {attemptsChrono.map((attempt) => {
-                          const tone =
-                            attempt.status === null || attempt.status === undefined
-                              ? 'neutral'
-                              : attempt.status >= 400
-                                ? 'error'
-                                : 'success'
-                          const statusClass =
-                            tone === 'error'
-                              ? 'text-red-300'
-                              : tone === 'success'
-                                ? 'text-emerald-300'
-                                : 'text-zinc-400'
-                          const detailClass =
-                            tone === 'error'
-                              ? 'text-red-300'
-                              : tone === 'success'
-                                ? 'text-emerald-200'
-                                : 'text-zinc-400'
-
-                          return (
-                            <li className="flex flex-wrap items-center gap-2" key={attempt.id}>
-                              <span className="rounded bg-black/45 px-1.5 py-0.5">Attempt {attempt.attempt}</span>
-                              <span>{new Date(attempt.createdAt).toLocaleTimeString()}</span>
-                              <span className={statusClass}>
-                                {attempt.status ? `HTTP ${attempt.status}` : 'No status'}
-                              </span>
-                              {attempt.responseBody ? (
-                                <span className={`truncate ${detailClass}`}>{attempt.responseBody}</span>
-                              ) : attempt.error ? (
-                                <span className={`truncate ${detailClass}`}>{attempt.error}</span>
-                              ) : null}
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    )}
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">Payload</p>
-                      <CopyToClipboard
-                        text={payloadText}
-                        label="Copy JSON"
-                        className="inline-flex items-center gap-1 text-xs text-zinc-300 underline hover:text-zinc-100"
-                        iconClassName="h-3.5 w-3.5"
-                      />
-                    </div>
-                    <div className="mt-2 max-h-80 overflow-auto rounded-lg border border-white/10 bg-black/50 p-3 text-xs text-zinc-200">
-                      <JsonViewer value={selected.payload ?? {}} />
-                    </div>
-                  </div>
-                </div>
-              )
-            })()}
-          </div>
-        </div>
-      ) : null}
+      <EventDetailDrawer
+        open={Boolean(detailEventId)}
+        event={detailEventId ? displayEvents.find((item) => item.id === detailEventId) ?? null : null}
+        onClose={() => setDetailEventId(null)}
+        endpointNameFallback={
+          detailEventId
+            ? endpointNameMap.get(displayEvents.find((item) => item.id === detailEventId)?.endpointId ?? '') ?? null
+            : null
+        }
+        destinationFallback={
+          detailEventId
+            ? endpointMap.get(displayEvents.find((item) => item.id === detailEventId)?.endpointId ?? '') ?? null
+            : null
+        }
+      />
     </section>
   )
 }
@@ -826,12 +662,6 @@ function EventsLoadingSkeleton() {
       ))}
     </section>
   )
-}
-
-function readableTitle(type: string, stripeId: string) {
-  const shortId = stripeId.slice(-8)
-  const prettyType = type.replaceAll('_', ' ')
-  return `${prettyType} — ${shortId}`
 }
 
 type VisualState = 'IN_PROGRESS' | 'FAILED' | 'DELIVERED'
@@ -878,64 +708,6 @@ function latestError(event: {
 function requiresAttention(event: { lastAttemptStatus: number | null; status?: string }) {
   if (event.status === 'FAILED') return true
   return event.lastAttemptStatus !== null && event.lastAttemptStatus >= 400
-}
-
-function JsonViewer({ value }: { value: unknown }) {
-  return (
-    <div className="font-mono">
-      <JsonNode value={value} label="root" depth={0} />
-    </div>
-  )
-}
-
-function JsonNode({
-  value,
-  label,
-  depth,
-}: {
-  value: unknown
-  label?: string
-  depth: number
-}) {
-  if (value === null || typeof value !== 'object') {
-    return (
-      <div className="whitespace-pre-wrap">
-        {label ? <span className="text-emerald-300">{label}: </span> : null}
-        <span className="text-cyan-200">{formatJsonScalar(value)}</span>
-      </div>
-    )
-  }
-
-  const entries = Array.isArray(value) ? value.map((item, index) => [String(index), item]) : Object.entries(value)
-  const summaryLabel = Array.isArray(value) ? `Array(${entries.length})` : `Object(${entries.length})`
-  const isOpen = depth < 1
-
-  return (
-    <details className="ml-2" open={isOpen}>
-      <summary className="cursor-pointer select-none text-zinc-300">
-        {label ? <span className="text-emerald-300">{label}: </span> : null}
-        <span className="text-zinc-400">{summaryLabel}</span>
-      </summary>
-      <div className="mt-1 space-y-1">
-        {entries.length === 0 ? (
-          <div className="ml-4 text-zinc-500">Empty</div>
-        ) : (
-          entries.map(([childLabel, childValue]) => (
-            <div className="ml-4" key={`${label ?? 'root'}-${childLabel}`}>
-              <JsonNode value={childValue} label={childLabel} depth={depth + 1} />
-            </div>
-          ))
-        )}
-      </div>
-    </details>
-  )
-}
-
-function formatJsonScalar(value: unknown) {
-  if (value === null) return 'null'
-  if (typeof value === 'string') return `"${value}"`
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  return String(value)
 }
 
 function formatBytes(bytes: number | null) {

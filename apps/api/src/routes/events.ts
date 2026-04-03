@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
-import { db, events, eventAttempts, endpoints, users, getPlanLimits, isUnlimited } from '@perspectify/db'
+import { db, events, eventAttempts, deliveries, endpoints, users, getPlanLimits, isUnlimited } from '@perspectify/db'
 import { enqueueDelivery } from '@perspectify/queue'
-import { and, count, desc, eq, inArray, lt, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray, lt, or, sql } from 'drizzle-orm'
 
 export const eventsRoutes = new Hono()
 
@@ -142,6 +142,88 @@ eventsRoutes.get('/', async (c) => {
     hasMore,
     nextCursor,
     totalCount: countRow?.total ?? 0,
+  })
+})
+
+// GET /events/:eventId
+eventsRoutes.get('/:eventId', async (c) => {
+  const userId = c.get('user').id
+  const eventId = c.req.param('eventId')
+
+  const [ownedEvent] = await db
+    .select({ id: events.id })
+    .from(events)
+    .innerJoin(endpoints, eq(events.endpointId, endpoints.id))
+    .innerJoin(users, eq(endpoints.userId, users.id))
+    .where(and(eq(events.id, eventId), eq(users.id, userId)))
+    .limit(1)
+
+  if (!ownedEvent) {
+    return c.json({ error: 'Event not found' }, 404)
+  }
+
+  const event = await db.query.events.findFirst({
+    where: eq(events.id, eventId),
+    columns: {
+      id: true,
+      endpointId: true,
+      stripeId: true,
+      type: true,
+      payload: true,
+      payloadSize: true,
+      sourceHeaders: true,
+      destinationUrl: true,
+      providerName: true,
+      status: true,
+      attempts: true,
+      replayCount: true,
+      lastAttemptStatus: true,
+      lastError: true,
+      receivedAt: true,
+      deliveredAt: true,
+    },
+    with: {
+      endpoint: {
+        columns: {
+          id: true,
+          name: true,
+          destination: true,
+        },
+      },
+      eventAttempts: {
+        columns: {
+          id: true,
+          eventId: true,
+          attempt: true,
+          status: true,
+          responseBody: true,
+          error: true,
+          createdAt: true,
+        },
+        orderBy: asc(eventAttempts.attempt),
+      },
+      deliveries: {
+        columns: {
+          id: true,
+          eventId: true,
+          attempt: true,
+          status: true,
+          statusCode: true,
+          error: true,
+          attemptedAt: true,
+        },
+        orderBy: asc(deliveries.attempt),
+      },
+    },
+  })
+
+  if (!event) {
+    return c.json({ error: 'Event not found' }, 404)
+  }
+
+  return c.json({
+    ...event,
+    endpointName: event.endpoint?.name ?? null,
   })
 })
 

@@ -52,6 +52,8 @@ function EventMobileCard({
   onViewPayload: () => void
   plan: 'free' | 'starter'
 }) {
+  const endpointLabel = event.endpointName ?? event.destinationUrl ?? 'Unknown endpoint'
+
   return (
     <article className="rounded-xl border border-white/10 bg-[#111111]">
       <button className="w-full px-4 py-4 text-left" onClick={onToggle} type="button">
@@ -60,7 +62,7 @@ function EventMobileCard({
           <ChevronDown className={`h-4 w-4 text-[#a1a1aa] transition-transform ${expanded ? 'rotate-180' : ''}`} />
         </div>
         <p className="mt-1 text-xs text-[#a1a1aa]">{event.status}</p>
-        <p className="mt-1 truncate text-xs text-[#a1a1aa]">→ {event.destinationUrl ?? 'Unknown destination'}</p>
+        <p className="mt-1 truncate text-xs text-[#a1a1aa]">→ {endpointLabel}</p>
         <p className="mt-1 text-xs text-[#71717a]">{formatExactTime(event.receivedAt)} · {event.attempts} attempts</p>
       </button>
 
@@ -370,7 +372,7 @@ export default function EventsPage() {
                 status: event.status,
                 attempts: event.attempts,
                 destinationUrl: event.destinationUrl,
-                endpointName: event.destinationUrl,
+                endpointName: event.endpointName,
                 receivedAt: event.receivedAt,
                 lastAttemptStatus: event.lastAttemptStatus,
               }}

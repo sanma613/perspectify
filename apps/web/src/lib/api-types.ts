@@ -62,6 +62,15 @@ export interface EventResponse {
   eventAttempts: EventAttemptResponse[]
 }
 
+export interface EventDetailResponse extends EventResponse {
+  endpoint: {
+    id: string
+    name: string
+    destination: string
+  } | null
+  deliveries: DeliveryResponse[]
+}
+
 export interface EventsCursor {
   cursorReceivedAt: string
   cursorId: string
