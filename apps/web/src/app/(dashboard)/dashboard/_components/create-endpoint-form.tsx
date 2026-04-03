@@ -5,6 +5,7 @@ import { ExternalLink, Eye, EyeOff, Link2, X } from 'lucide-react'
 import { z } from 'zod'
 import { getAccessToken } from '../../../../lib/access-token'
 import { ApiError, apiFetch, getApiBaseUrl } from '../../../../lib/http'
+import { handleEnterAdvance } from '../../../../lib/forms/enter-navigation'
 import type { PlanCapabilities } from '../../../../lib/capabilities'
 import { useDashboardData } from '../../../../lib/use-dashboard-data'
 import { CopyToClipboard } from './copyToClipboard'
@@ -343,11 +344,22 @@ export function CreateEndpointForm({
 
       <div className="space-y-3">
           {step === 'A' ? (
-            <div className="animate-[fade-up_200ms_ease]">
+            <div
+              className="animate-[fade-up_200ms_ease]"
+              onKeyDown={(event) => {
+                handleEnterAdvance(event, {
+                  onComplete: () => {
+                    void goToStepB()
+                  },
+                  allowFormSubmit: false,
+                })
+              }}
+            >
               <label className="block text-sm text-zinc-300">
                 Name
                 <input
                   className="mt-1 w-full rounded-xl border border-white/15 bg-black/35 px-3 py-2.5 text-zinc-100 outline-none transition placeholder:text-zinc-500 hover:border-white/25 focus:border-emerald-400/70 focus:ring-4 focus:ring-emerald-400/18"
+                  minLength={1}
                   onBlur={(event) => {
                     validateName(event.target.value)
                   }}
@@ -356,6 +368,7 @@ export function CreateEndpointForm({
                     if (nameError) validateName(event.target.value)
                   }}
                   placeholder="Stripe → Make (production)"
+                  required
                   value={name}
                 />
                 {nameError ? <p className="mt-1 text-xs text-red-400">{nameError}</p> : null}
@@ -373,6 +386,7 @@ export function CreateEndpointForm({
                     if (destinationError) validateDestination(event.target.value)
                   }}
                   placeholder="https://hooks.zapier.com/hooks/catch/..."
+                  required
                   type="url"
                   value={destination}
                 />
@@ -383,6 +397,7 @@ export function CreateEndpointForm({
               <div className="mt-6 flex gap-3">
                 <button
                   className="rounded-xl bg-green-500 px-4 py-2.5 text-sm font-bold text-black disabled:cursor-not-allowed disabled:opacity-60"
+                  data-enter-submit="true"
                   disabled={!name.trim() || !destination.trim() || !stepAReady || Boolean(endpointLimitError) || isLoading}
                   onClick={() => {
                     void goToStepB()
@@ -407,7 +422,17 @@ export function CreateEndpointForm({
               ) : null}
             </div>
           ) : (
-            <div className="animate-[fade-up_200ms_ease]">
+            <div
+              className="animate-[fade-up_200ms_ease]"
+              onKeyDown={(event) => {
+                handleEnterAdvance(event, {
+                  onComplete: () => {
+                    void finalizeEndpoint()
+                  },
+                  allowFormSubmit: false,
+                })
+              }}
+            >
               <div className="mb-5 space-y-2 rounded-xl border border-white/10 bg-black/20 p-3">
                 <div className="flex h-11 items-center justify-between gap-2 rounded-xl border border-green-500/25 bg-green-500/10 px-3">
                   <span className="truncate font-mono text-sm text-green-400">
@@ -455,7 +480,9 @@ export function CreateEndpointForm({
                       setSecretError('')
                     }
                   }}
+                  pattern="^whsec_.*$"
                   placeholder="whsec_..."
+                  required
                   type={secretVisible ? 'text' : 'password'}
                   value={secret}
                 />
@@ -482,6 +509,7 @@ export function CreateEndpointForm({
                 </button>
                 <button
                   className="h-11 rounded-xl bg-green-500 px-4 text-sm font-bold text-black disabled:cursor-not-allowed disabled:opacity-60"
+                  data-enter-submit="true"
                   disabled={!secret || Boolean(secretError) || isLoading}
                   onClick={() => {
                     void finalizeEndpoint()

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../../../lib/supabase/client'
+import { handleEnterAdvance } from '../../../lib/forms/enter-navigation'
 import { signUpSchema } from '../../../lib/validation/auth'
 import { Field, PrimaryButton } from '../_components/form-primitives'
 
@@ -69,7 +70,7 @@ export function SignupForm() {
   }
 
   return (
-    <form className="space-y-4" onSubmit={onSubmit}>
+    <form className="space-y-4" onKeyDown={handleEnterAdvance} onSubmit={onSubmit}>
       <Field
         autoComplete="name"
         label="Display name (optional)"
@@ -84,6 +85,7 @@ export function SignupForm() {
         label="Email"
         name="email"
         onChange={(event) => setEmail(event.target.value)}
+        required
         type="email"
         value={email}
         error={fieldErrors.email}
@@ -93,6 +95,7 @@ export function SignupForm() {
         label="Password"
         name="password"
         onChange={(event) => setPassword(event.target.value)}
+        required
         type="password"
         value={password}
         error={fieldErrors.password}

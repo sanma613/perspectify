@@ -54,6 +54,7 @@ export default function EndpointsPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [removingEndpointIds, setRemovingEndpointIds] = useState<string[]>([])
   const [pendingTokenUrl, setPendingTokenUrl] = useState<string | null>(null)
+  const [pendingTokenPrefix, setPendingTokenPrefix] = useState<string | null>(null)
   const [pendingTokenNote, setPendingTokenNote] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [mobileActionsEndpoint, setMobileActionsEndpoint] = useState<EndpointResponse | null>(null)
@@ -130,10 +131,11 @@ export default function EndpointsPage() {
     setErrorMessage(null)
     try {
       const token = await getAccessToken()
-      const rotated = await apiFetch<{ tokenHash: string }>(`/endpoints/${rotateId}/rotate-token`, token, {
+      const rotated = await apiFetch<{ tokenHash: string; tokenPrefix: string }>(`/endpoints/${rotateId}/rotate-token`, token, {
         method: 'POST',
       })
       setPendingTokenUrl(`${getApiBaseUrl()}/webhook/${rotated.tokenHash}`)
+      setPendingTokenPrefix(rotated.tokenPrefix)
       setPendingTokenNote('Do not forget to update this URL in Stripe to avoid missing events.')
       setRotateId(null)
       await refresh()
@@ -491,7 +493,9 @@ export default function EndpointsPage() {
       </header>
 
       {errorMessage ? <p className="text-sm text-[#ef4444]">{errorMessage}</p> : null}
-      {pendingTokenUrl ? <WebhookUrl note={pendingTokenNote ?? undefined} url={pendingTokenUrl} /> : null}
+      {pendingTokenUrl ? (
+        <WebhookUrl note={pendingTokenNote ?? undefined} tokenPrefix={pendingTokenPrefix ?? undefined} url={pendingTokenUrl} />
+      ) : null}
 
       {showCreate && !isMobile ? (
         <article className="rounded-xl border border-white/10 bg-[#111111] p-4" ref={createCardRef}>
@@ -502,6 +506,7 @@ export default function EndpointsPage() {
             showInlineClose
             onCreated={async () => {
               setPendingTokenUrl(null)
+              setPendingTokenPrefix(null)
               setPendingTokenNote(null)
               setErrorMessage(null)
               await refresh()
@@ -586,6 +591,7 @@ export default function EndpointsPage() {
             showInlineClose={false}
             onCreated={async () => {
               setPendingTokenUrl(null)
+              setPendingTokenPrefix(null)
               setPendingTokenNote(null)
               setErrorMessage(null)
               await refresh()

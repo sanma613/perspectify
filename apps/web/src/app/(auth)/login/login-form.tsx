@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../../../lib/supabase/client'
+import { handleEnterAdvance } from '../../../lib/forms/enter-navigation'
 import { loginSchema } from '../../../lib/validation/auth'
 import { Field, PrimaryButton } from '../_components/form-primitives'
 
@@ -58,12 +59,13 @@ export function LoginForm() {
   }
 
   return (
-    <form className="space-y-4" onSubmit={onSubmit}>
+    <form className="space-y-4" onKeyDown={handleEnterAdvance} onSubmit={onSubmit}>
       <Field
         autoComplete="email"
         label="Email"
         name="email"
         onChange={(event) => setEmail(event.target.value)}
+        required
         type="email"
         value={email}
         error={fieldErrors.email}
@@ -73,6 +75,7 @@ export function LoginForm() {
         label="Password"
         name="password"
         onChange={(event) => setPassword(event.target.value)}
+        required
         type="password"
         value={password}
         error={fieldErrors.password}

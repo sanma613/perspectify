@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '../../../lib/supabase/client'
+import { handleEnterAdvance } from '../../../lib/forms/enter-navigation'
 import { forgotPasswordSchema } from '../../../lib/validation/auth'
 import { Field, PrimaryButton } from '../_components/form-primitives'
 
@@ -54,12 +55,13 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <form className="space-y-4" onSubmit={onSubmit}>
+    <form className="space-y-4" onKeyDown={handleEnterAdvance} onSubmit={onSubmit}>
       <Field
         autoComplete="email"
         label="Email"
         name="email"
         onChange={(event) => setEmail(event.target.value)}
+        required
         type="email"
         value={email}
         error={fieldErrors.email}

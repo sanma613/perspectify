@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../../../lib/supabase/client'
+import { handleEnterAdvance } from '../../../lib/forms/enter-navigation'
 import { resetPasswordSchema } from '../../../lib/validation/auth'
 import { Field, PrimaryButton } from '../_components/form-primitives'
 
@@ -55,12 +56,13 @@ export function ResetPasswordForm() {
   }
 
   return (
-    <form className="space-y-4" onSubmit={onSubmit}>
+    <form className="space-y-4" onKeyDown={handleEnterAdvance} onSubmit={onSubmit}>
       <Field
         autoComplete="new-password"
         label="New password"
         name="password"
         onChange={(event) => setPassword(event.target.value)}
+        required
         type="password"
         value={password}
         error={fieldErrors.password}
@@ -70,6 +72,7 @@ export function ResetPasswordForm() {
         label="Confirm password"
         name="confirmPassword"
         onChange={(event) => setConfirmPassword(event.target.value)}
+        required
         type="password"
         value={confirmPassword}
         error={fieldErrors.confirmPassword}
