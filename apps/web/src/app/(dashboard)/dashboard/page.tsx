@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Copy } from 'lucide-react'
 import type { EventResponse } from '../../../lib/api-types'
 import { getAccessToken } from '../../../lib/access-token'
-import { apiFetch, getApiBaseUrl } from '../../../lib/http'
+import { apiFetch } from '../../../lib/http'
 import { useDashboardData } from '../../../lib/use-dashboard-data'
 import { useMobile } from '../../../lib/hooks/use-mobile'
 import { EmptyState } from './_components/ui/empty-state'
@@ -34,31 +34,40 @@ function amountFromPayload(payload: Record<string, unknown>) {
   return `$${(amount / 100).toFixed(2)}`
 }
 
-function WaitingForFirstEvent({ endpointUrl }: { endpointUrl: string }) {
-  async function copy(value: string) {
-    await navigator.clipboard.writeText(value)
+function WaitingForFirstEvent({ endpointItems }: { endpointItems: Array<{ name: string; prefix: string }> }) {
+  const endpointCount = endpointItems.length
+  const hasOneEndpoint = endpointCount === 1
+  const endpointHeading = hasOneEndpoint ? '● Your endpoint is ready' : '● Your endpoints are ready'
+  const endpointListLabel = hasOneEndpoint ? 'Configured endpoint' : 'Configured endpoints'
+  const [copied, setCopied] = useState(false)
+  const commandLines = ['stripe login', 'stripe trigger payment_intent.succeeded']
+
+  async function copyCommandLine() {
+    await navigator.clipboard.writeText(commandLines.join('\n'))
+    setCopied(true)
+    window.setTimeout(() => {
+      setCopied(false)
+    }, 1200)
   }
 
   return (
     <section className="rounded-xl border border-white/10 bg-[#111111] p-4">
-      <p className="text-sm text-white">● Your endpoint is ready</p>
-      <p className="mt-4 text-sm text-[#a1a1aa]">Waiting for your first webhook from Stripe</p>
+      <p className="text-sm text-white">{endpointHeading}</p>
+      <p className="mt-4 text-sm text-[#a1a1aa]">Configure Stripe and send your first webhook.</p>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-[#1a1a1a] p-3">
-        <p className="min-w-0 flex-1 truncate font-mono text-xs text-white">{endpointUrl}</p>
-        <button
-          className="inline-flex h-11 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white"
-          onClick={() => {
-            void copy(endpointUrl)
-          }}
-          type="button"
-        >
-          <Copy className="h-4 w-4" />
-          Copy
-        </button>
+      <div className="mt-3 rounded-lg border border-white/10 bg-[#1a1a1a] p-3">
+        <p className="text-xs text-[#a1a1aa]">{endpointListLabel}</p>
+        <ul className="mt-2 space-y-1">
+          {endpointItems.map((endpoint, index) => (
+            <li className="truncate font-mono text-xs text-white" key={`${endpoint.name}-${index}`}>
+              • {endpoint.name} ({endpoint.prefix}...)
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-xs text-[#a1a1aa]">Ensure at least one listed endpoint is configured in Stripe.</p>
       </div>
 
-      <p className="mt-4 text-sm text-[#a1a1aa]">Make sure this URL is saved in Stripe.</p>
+      <p className="mt-4 text-sm text-[#a1a1aa]">Open Stripe Webhooks and confirm your endpoint is active.</p>
       <a
         className="mt-2 inline-flex h-11 items-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm text-white"
         href="https://dashboard.stripe.com/webhooks"
@@ -68,13 +77,60 @@ function WaitingForFirstEvent({ endpointUrl }: { endpointUrl: string }) {
         Open Stripe Webhooks
       </a>
 
-      <p className="mt-4 text-sm text-[#a1a1aa]">Once Stripe fires a webhook, it will appear here automatically.</p>
-
       <div className="mt-4 border-t border-white/10 pt-4">
-        <p className="text-sm text-[#a1a1aa]">To test it now:</p>
-        <p className="mt-2 rounded-lg border border-white/10 bg-[#1a1a1a] px-3 py-2 font-mono text-xs text-white">
-          stripe trigger payment_intent.succeeded
-        </p>
+        <p className="text-sm text-[#a1a1aa]">To test from Stripe CLI:</p>
+        <div className="mt-2 space-y-2 rounded-lg border border-white/10 bg-[#1a1a1a] px-3 py-3">
+          <p className="text-xs text-[#a1a1aa]">1. Install Stripe CLI:</p>
+          <a
+            className="inline-flex text-xs text-[#22c55e] underline underline-offset-2"
+            href="https://docs.stripe.com/stripe-cli/install"
+            rel="noreferrer"
+            target="_blank"
+          >
+            Stripe CLI download
+          </a>
+          <p className="text-xs text-[#a1a1aa]">2. Run these commands in your terminal:</p>
+
+          <div className="overflow-hidden rounded-lg border border-white/10 bg-[#0b0b0b]">
+            <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-[0.1em] text-zinc-400">Command line</p>
+              <div className="relative">
+                <button
+                  aria-label="Copy commands"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-300 transition hover:bg-white/10 hover:text-white"
+                  onClick={() => {
+                    void copyCommandLine()
+                  }}
+                  type="button"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+                {copied ? (
+                  <span className="pointer-events-none absolute right-0 top-8 whitespace-nowrap rounded-md border border-emerald-400/30 bg-emerald-500/15 px-2 py-1 text-[11px] text-emerald-200">
+                    Copied
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <div className="space-y-1 px-3 py-3 font-mono text-xs text-white">
+              {commandLines.map((command) => (
+                <p key={command}>$ {command}</p>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 rounded-lg border border-white/10 bg-[#131313] px-3 py-3">
+          <p className="text-xs text-[#a1a1aa]">For more information:</p>
+          <a
+            className="mt-1 inline-flex text-xs text-[#22c55e] underline underline-offset-2"
+            href="https://docs.stripe.com/stripe-cli/"
+            rel="noreferrer"
+            target="_blank"
+          >
+            Stripe CLI docs
+          </a>
+        </div>
       </div>
     </section>
   )
@@ -186,7 +242,12 @@ export default function DashboardPage() {
     )
   }
 
-  const endpointUrl = `${getApiBaseUrl()}/webhook/${endpoints[0]?.tokenPrefix ?? 'psp_live_...'}`
+  const endpointItems = endpoints
+    .map((endpoint) => ({
+      name: endpoint.name,
+      prefix: endpoint.tokenPrefix,
+    }))
+    .filter((endpoint) => Boolean(endpoint.name && endpoint.prefix))
 
   async function rescueEvent(eventId: string) {
     setPendingRescue(eventId)
@@ -228,7 +289,7 @@ export default function DashboardPage() {
       </div>
 
       {!hasEvents ? (
-        <WaitingForFirstEvent endpointUrl={endpointUrl} />
+        <WaitingForFirstEvent endpointItems={endpointItems} />
       ) : (
         <>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
