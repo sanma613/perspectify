@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
-import { db, endpoints, events, users, getPlanLimits, isUnlimited } from '@perspectify/db'
-import { and, eq, count, or } from 'drizzle-orm'
-import { encrypt } from '../lib/encryption'
+import { db, endpoints, eventAttempts, events, deliveries, users, getPlanLimits, isUnlimited } from '@perspectify/db'
+import { and, eq, count, inArray, or, ne } from 'drizzle-orm'
+import { decrypt, encrypt } from '../lib/encryption'
 import { createWebhookToken } from '../lib/webhook-token'
 
 export const endpointsRoutes = new Hono()
@@ -14,7 +14,6 @@ interface CreateEndpointBody {
 
 interface UpdateEndpointBody {
   name?: string
-  destination?: string
   secret?: string
 }
 
@@ -208,7 +207,14 @@ endpointsRoutes.patch('/:id', async (c) => {
   const endpointId = c.req.param('id')
 
   const [ownedEndpoint] = await db
-    .select({ id: endpoints.id })
+    .select({
+      id: endpoints.id,
+      name: endpoints.name,
+      destination: endpoints.destination,
+      secret: endpoints.secret,
+      token_prefix: endpoints.tokenPrefix,
+      created_at: endpoints.createdAt,
+    })
     .from(endpoints)
     .where(and(eq(endpoints.id, endpointId), eq(endpoints.userId, userId)))
     .limit(1)
@@ -219,74 +225,74 @@ endpointsRoutes.patch('/:id', async (c) => {
 
   const updates: {
     name?: string
-    destination?: string
     secret?: string
   } = {}
 
+  let changed = false
+
   if (typeof body.name === 'string') {
-    const name = body.name.trim()
-    if (!name) {
-      return c.json({ error: 'name cannot be empty' }, 400)
-    }
-    updates.name = name
-  }
+    const trimmedName = body.name.trim()
 
-  if (typeof body.destination === 'string') {
-    const destination = body.destination.trim()
-    if (!destination) {
-      return c.json({ error: 'destination cannot be empty' }, 400)
-    }
-    updates.destination = destination
-  }
-
-  if (typeof body.secret === 'string') {
-    const secret = body.secret.trim()
-    if (!secret) {
-      return c.json({ error: 'secret cannot be empty' }, 400)
-    }
-    updates.secret = encrypt(secret)
-  }
-
-  if (updates.name || updates.destination) {
-    const nextName = updates.name
-    const nextDestination = updates.destination
-
-    const nameConflictFilter = nextName ? eq(endpoints.name, nextName) : undefined
-    const destinationConflictFilter = nextDestination
-      ? eq(endpoints.destination, nextDestination)
-      : undefined
-
-    const conflictFilter =
-      nameConflictFilter && destinationConflictFilter
-        ? or(nameConflictFilter, destinationConflictFilter)
-        : nameConflictFilter ?? destinationConflictFilter
-
-    if (conflictFilter) {
-      const existing = await db
-        .select({ id: endpoints.id, name: endpoints.name, destination: endpoints.destination })
+    if (trimmedName !== ownedEndpoint.name) {
+      const conflict = await db
+        .select({ id: endpoints.id })
         .from(endpoints)
-        .where(and(eq(endpoints.userId, userId), conflictFilter))
+        .where(
+          and(
+            eq(endpoints.userId, userId),
+            eq(endpoints.name, trimmedName),
+            ne(endpoints.id, endpointId)
+          )
+        )
         .limit(1)
 
-      if (existing.length > 0 && existing[0].id !== endpointId) {
-        const conflict = nextName && existing[0].name === nextName ? 'name' : 'destination'
+      if (conflict.length > 0) {
         return c.json(
           {
             error: 'conflict',
-            field: conflict,
-            message:
-              conflict === 'name'
-                ? 'An endpoint with this name already exists'
-                : 'An endpoint with this destination already exists',
+            field: 'name',
+            message: 'An endpoint with this name already exists',
           },
           409
         )
       }
+
+      updates.name = trimmedName
+      changed = true
     }
   }
 
-  if (Object.keys(updates).length === 0) {
-    return c.json({ error: 'No valid fields to update' }, 400)
+  if (typeof body.secret === 'string') {
+    const nextSecret = body.secret.trim()
+
+    if (nextSecret.length > 0) {
+      if (!nextSecret.startsWith('whsec_')) {
+        return c.json(
+          {
+            error: 'invalid_secret',
+            message: 'Secret must start with whsec_',
+          },
+          400
+        )
+      }
+
+      let currentSecret: string | null = null
+      try {
+        currentSecret = decrypt(ownedEndpoint.secret)
+      } catch {
+        // Legacy/malformed payloads should be replaceable without failing the update request.
+        currentSecret = null
+      }
+
+      if (currentSecret !== nextSecret) {
+        updates.secret = encrypt(nextSecret)
+        changed = true
+      }
+    }
+  }
+
+  if (!changed) {
+    return c.json({ changed: false })
   }
 
   const [updated] = await db
@@ -295,15 +301,13 @@ endpointsRoutes.patch('/:id', async (c) => {
     .where(and(eq(endpoints.id, endpointId), eq(endpoints.userId, userId)))
     .returning({
       id: endpoints.id,
-      userId: endpoints.userId,
       name: endpoints.name,
       destination: endpoints.destination,
-      tokenPrefix: endpoints.tokenPrefix,
-      tokenRotatedAt: endpoints.tokenRotatedAt,
-      createdAt: endpoints.createdAt,
+      token_prefix: endpoints.tokenPrefix,
+      created_at: endpoints.createdAt,
     })
 
-  return c.json(updated)
+  return c.json({ changed: true, endpoint: updated })
 })
 
 // DELETE /endpoints/:id
@@ -321,21 +325,24 @@ endpointsRoutes.delete('/:id', async (c) => {
     return c.json({ error: 'Endpoint not found' }, 404)
   }
 
-  const [{ total }] = await db
-    .select({ total: count() })
+  const eventIds = await db
+    .select({ id: events.id })
     .from(events)
     .where(eq(events.endpointId, endpointId))
 
-  if (total > 0) {
-    return c.json(
-      { error: 'Cannot delete endpoint with events. Keep it for audit history.' },
-      409
-    )
-  }
+  const ids = eventIds.map((eventRow) => eventRow.id)
 
-  await db
-    .delete(endpoints)
-    .where(and(eq(endpoints.id, endpointId), eq(endpoints.userId, userId)))
+  await db.transaction(async (tx) => {
+    if (ids.length > 0) {
+      await tx.delete(eventAttempts).where(inArray(eventAttempts.eventId, ids))
+      await tx.delete(deliveries).where(inArray(deliveries.eventId, ids))
+      await tx.delete(events).where(inArray(events.id, ids))
+    }
 
-  return c.json({ deleted: true })
+    await tx
+      .delete(endpoints)
+      .where(and(eq(endpoints.id, endpointId), eq(endpoints.userId, userId)))
+  })
+
+  return c.json({ deleted: true, eventsDeleted: ids.length })
 })

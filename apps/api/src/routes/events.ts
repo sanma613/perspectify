@@ -23,6 +23,7 @@ eventsRoutes.get('/', async (c) => {
   const limitParam = c.req.query('limit')
   const endpointId = c.req.query('endpointId')
   const endpointIdsParam = c.req.query('endpointIds')
+  const countOnly = c.req.query('count') === 'true'
   const needsRescue = c.req.query('needsRescue') === '1'
   const cursorReceivedAt = c.req.query('cursorReceivedAt')
   const cursorId = c.req.query('cursorId')
@@ -64,6 +65,11 @@ eventsRoutes.get('/', async (c) => {
   }
 
   const whereBase = and(...filters)
+
+  if (countOnly) {
+    const [countRow] = await db.select({ total: count() }).from(events).where(whereBase)
+    return c.json({ count: countRow?.total ?? 0 })
+  }
 
   const withCursor =
     cursorReceivedAt && cursorId
