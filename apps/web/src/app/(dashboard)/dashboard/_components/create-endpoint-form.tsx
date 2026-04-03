@@ -293,6 +293,11 @@ export function CreateEndpointForm({
       return
     }
 
+    if (secret.trim().slice('whsec_'.length).length < 13) {
+      setSecretError('After whsec_, include at least 13 characters')
+      return
+    }
+
     setSecretError('')
     setIsLoading(true)
 
@@ -476,6 +481,8 @@ export function CreateEndpointForm({
                     setSecret(nextSecret)
                     if (nextSecret && !nextSecret.startsWith('whsec_')) {
                       setSecretError('Stripe secrets start with whsec_')
+                    } else if (nextSecret && nextSecret.startsWith('whsec_') && nextSecret.slice('whsec_'.length).length < 13) {
+                      setSecretError('After whsec_, include at least 13 characters')
                     } else {
                       setSecretError('')
                     }
@@ -501,7 +508,7 @@ export function CreateEndpointForm({
 
               <div className="mt-6 flex gap-3">
                 <button
-                  className="h-11 rounded-xl border border-white/15 bg-black/30 px-3 text-sm text-zinc-300 hover:bg-black/45"
+                  className="text-sm 'text-zinc-500 hover:text-white'"
                   onClick={goToStepA}
                   type="button"
                 >

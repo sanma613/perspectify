@@ -5,9 +5,9 @@ function getApiBaseUrl() {
   return process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
 }
 
-async function getEndpointCount(accessToken: string): Promise<number> {
+async function getHasEndpoints(accessToken: string): Promise<boolean> {
   try {
-    const response = await fetch(`${getApiBaseUrl()}/endpoints?count=true`, {
+    const response = await fetch(`${getApiBaseUrl()}/endpoints`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
@@ -15,15 +15,17 @@ async function getEndpointCount(accessToken: string): Promise<number> {
       signal: AbortSignal.timeout(3000),
     })
 
-    if (!response.ok) {
-      return 0
-    }
+    if (!response.ok) return false
 
-    const data = (await response.json()) as { count?: number }
-    return typeof data.count === 'number' ? data.count : 0
+    const data = (await response.json()) as unknown
+    const endpoints = Array.isArray(data)
+      ? data
+      : (data as { endpoints?: unknown })?.endpoints
+
+    return Array.isArray(endpoints) && endpoints.length > 0
   } catch {
     // In dev, API restarts can briefly close sockets; fail open to avoid crashing Next proxy.
-    return 0
+    return true
   }
 }
 
@@ -95,9 +97,15 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (user.email_confirmed_at && pathname === '/dashboard' && searchParams.get('new') === 'true' && session?.access_token) {
-    const endpointCount = await getEndpointCount(session.access_token)
-    if (endpointCount === 0) {
+  if (user.email_confirmed_at && pathname === '/dashboard' && session?.access_token) {
+    const createdAtMs = user.created_at ? new Date(user.created_at).getTime() : Number.NaN
+    const isRecentlyCreated = Number.isFinite(createdAtMs) && Date.now() - createdAtMs < 10 * 60 * 1000
+    const isNewUser = isRecentlyCreated || searchParams.get('new') === 'true'
+
+    if (isNewUser) {
+      const hasEndpoints = await getHasEndpoints(session.access_token)
+      if (hasEndpoints) return supabaseResponse
+
       const url = request.nextUrl.clone()
       url.pathname = '/onboarding'
       return NextResponse.redirect(url)

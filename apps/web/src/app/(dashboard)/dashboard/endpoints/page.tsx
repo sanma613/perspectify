@@ -17,7 +17,13 @@ import { WebhookUrl } from '../_components/ui/webhook-url'
 import { z } from 'zod'
 
 const editNameSchema = z.string().trim().min(1, 'Name is required.').max(60, 'Name must be 60 characters or less.')
-const editSecretSchema = z.string().trim().startsWith('whsec_', 'Secret must start with whsec_.')
+const editSecretSchema = z
+  .string()
+  .trim()
+  .startsWith('whsec_', 'Secret must start with whsec_.')
+  .refine((value) => value.slice('whsec_'.length).length >= 13, {
+    message: 'After whsec_, include at least 13 characters.',
+  })
 
 type UpdateEndpointResponse =
   | { changed: false }

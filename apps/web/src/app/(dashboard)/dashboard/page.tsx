@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { Copy } from 'lucide-react'
 import type { EventResponse } from '../../../lib/api-types'
 import { getAccessToken } from '../../../lib/access-token'
@@ -34,7 +33,7 @@ function amountFromPayload(payload: Record<string, unknown>) {
   return `$${(amount / 100).toFixed(2)}`
 }
 
-function WaitingForFirstEvent({ endpointItems }: { endpointItems: Array<{ name: string; prefix: string }> }) {
+function WaitingForFirstEvent({ endpointItems }: { endpointItems: Array<{ name: string; destination: string }> }) {
   const endpointCount = endpointItems.length
   const hasOneEndpoint = endpointCount === 1
   const endpointHeading = hasOneEndpoint ? '● Your endpoint is ready' : '● Your endpoints are ready'
@@ -60,7 +59,7 @@ function WaitingForFirstEvent({ endpointItems }: { endpointItems: Array<{ name: 
         <ul className="mt-2 space-y-1">
           {endpointItems.map((endpoint, index) => (
             <li className="truncate font-mono text-xs text-white" key={`${endpoint.name}-${index}`}>
-              • {endpoint.name} ({endpoint.prefix}...)
+              • {endpoint.name} ({endpoint.destination})
             </li>
           ))}
         </ul>
@@ -174,7 +173,6 @@ function EventCard({
 }
 
 export default function DashboardPage() {
-  const router = useRouter()
   const isMobile = useMobile()
   const { me, endpoints, loading, error, eventsThisMonth } = useDashboardData()
 
@@ -183,12 +181,7 @@ export default function DashboardPage() {
   const [pendingRescue, setPendingRescue] = useState<string | null>(null)
   const [rescueAllLoading, setRescueAllLoading] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-  const [isNew, setIsNew] = useState(false)
   const rescueRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    setIsNew(typeof window !== 'undefined' && new URL(window.location.href).searchParams.get('new') === 'true')
-  }, [])
 
   useEffect(() => {
     async function loadEvents() {
@@ -211,12 +204,6 @@ export default function DashboardPage() {
   const hasEndpoints = endpoints.length > 0
   const hasEvents = events.length > 0
 
-  useEffect(() => {
-    if (isNew && !hasEndpoints) {
-      router.replace('/onboarding')
-    }
-  }, [isNew, hasEndpoints, router])
-
   if (loading) {
     return <div className="h-40 animate-pulse rounded-xl border border-white/10 bg-[#111111]" />
   }
@@ -233,11 +220,11 @@ export default function DashboardPage() {
             className="inline-flex h-11 items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm text-white"
             href="/onboarding"
           >
-            Open onboarding
+            Set up your first endpoint →
           </Link>
         }
         description="Create your first endpoint to start receiving webhooks."
-        title="No endpoint yet"
+        title="No endpoints yet"
       />
     )
   }
@@ -245,9 +232,9 @@ export default function DashboardPage() {
   const endpointItems = endpoints
     .map((endpoint) => ({
       name: endpoint.name,
-      prefix: endpoint.tokenPrefix,
+      destination: endpoint.destination,
     }))
-    .filter((endpoint) => Boolean(endpoint.name && endpoint.prefix))
+    .filter((endpoint) => Boolean(endpoint.name && endpoint.destination))
 
   async function rescueEvent(eventId: string) {
     setPendingRescue(eventId)

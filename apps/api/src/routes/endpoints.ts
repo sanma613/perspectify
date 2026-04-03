@@ -14,7 +14,22 @@ interface CreateEndpointBody {
 
 interface UpdateEndpointBody {
   name?: string
+  destination?: string
   secret?: string
+}
+
+const ENDPOINTS_USER_NAME_UNIQUE = 'endpoints_user_name_unique'
+const ENDPOINTS_USER_DESTINATION_UNIQUE = 'endpoints_user_destination_unique'
+const SECRET_PREFIX = 'whsec_'
+const MIN_SECRET_SUFFIX_LENGTH = 13
+
+function isUniqueViolation(error: unknown): error is { code: string; constraint?: string } {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === '23505'
+  )
 }
 
 // GET /endpoints
@@ -52,10 +67,35 @@ endpointsRoutes.post('/', async (c) => {
   const userId = authUser.id
   const name = body.name?.trim()
   const destination = body.destination?.trim()
-  const secret = body.secret?.trim()
+  const secret = body.secret?.trim() ?? ''
 
   if (!name || !destination) {
     return c.json({ error: 'name and destination are required' }, 400)
+  }
+
+  try {
+    const parsed = new URL(destination)
+    if (parsed.protocol !== 'https:') {
+      throw new Error('invalid protocol')
+    }
+  } catch {
+    return c.json({ error: 'destination must be a valid https URL' }, 400)
+  }
+
+  if (secret.length > 0) {
+    if (!secret.startsWith(SECRET_PREFIX)) {
+      return c.json({ error: 'invalid_secret', message: 'Secret must start with whsec_' }, 400)
+    }
+
+    if (secret.slice(SECRET_PREFIX.length).length < MIN_SECRET_SUFFIX_LENGTH) {
+      return c.json(
+        {
+          error: 'invalid_secret',
+          message: 'Secret must include at least 13 characters after whsec_',
+        },
+        400
+      )
+    }
   }
 
   let [user] = await db
@@ -123,26 +163,63 @@ endpointsRoutes.post('/', async (c) => {
   }
 
   const { token, tokenHash, tokenPrefix } = createWebhookToken()
-  const encryptedSecret = encrypt(secret ?? '')
+  const encryptedSecret = encrypt(secret)
 
-  const [endpoint] = await db
-    .insert(endpoints)
-    .values({
-      userId,
-      name,
-      destination,
-      tokenHash,
-      tokenPrefix,
-      secret: encryptedSecret,
-    })
-    .returning({
-      id: endpoints.id,
-      userId: endpoints.userId,
-      name: endpoints.name,
-      destination: endpoints.destination,
-      tokenPrefix: endpoints.tokenPrefix,
-      createdAt: endpoints.createdAt,
-    })
+  let endpoint: {
+    id: string
+    userId: string
+    name: string
+    destination: string
+    tokenPrefix: string
+    createdAt: Date
+  }
+
+  try {
+    ;[endpoint] = await db
+      .insert(endpoints)
+      .values({
+        userId,
+        name,
+        destination,
+        tokenHash,
+        tokenPrefix,
+        secret: encryptedSecret,
+      })
+      .returning({
+        id: endpoints.id,
+        userId: endpoints.userId,
+        name: endpoints.name,
+        destination: endpoints.destination,
+        tokenPrefix: endpoints.tokenPrefix,
+        createdAt: endpoints.createdAt,
+      })
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      if (error.constraint === ENDPOINTS_USER_NAME_UNIQUE) {
+        return c.json(
+          {
+            error: 'conflict',
+            field: 'name',
+            message: 'An endpoint with this name already exists',
+          },
+          409
+        )
+      }
+
+      if (error.constraint === ENDPOINTS_USER_DESTINATION_UNIQUE) {
+        return c.json(
+          {
+            error: 'conflict',
+            field: 'destination',
+            message: 'An endpoint with this destination already exists',
+          },
+          409
+        )
+      }
+    }
+
+    throw error
+  }
 
   return c.json(
     {
@@ -225,6 +302,7 @@ endpointsRoutes.patch('/:id', async (c) => {
 
   const updates: {
     name?: string
+    destination?: string
     secret?: string
   } = {}
 
@@ -262,15 +340,72 @@ endpointsRoutes.patch('/:id', async (c) => {
     }
   }
 
+  if (typeof body.destination === 'string') {
+    const trimmedDestination = body.destination.trim()
+
+    if (trimmedDestination !== ownedEndpoint.destination) {
+      try {
+        const parsed = new URL(trimmedDestination)
+        if (parsed.protocol !== 'https:') {
+          throw new Error('invalid protocol')
+        }
+      } catch {
+        return c.json(
+          {
+            error: 'invalid_destination',
+            message: 'destination must be a valid https URL',
+          },
+          400
+        )
+      }
+
+      const conflict = await db
+        .select({ id: endpoints.id })
+        .from(endpoints)
+        .where(
+          and(
+            eq(endpoints.userId, userId),
+            eq(endpoints.destination, trimmedDestination),
+            ne(endpoints.id, endpointId)
+          )
+        )
+        .limit(1)
+
+      if (conflict.length > 0) {
+        return c.json(
+          {
+            error: 'conflict',
+            field: 'destination',
+            message: 'An endpoint with this destination already exists',
+          },
+          409
+        )
+      }
+
+      updates.destination = trimmedDestination
+      changed = true
+    }
+  }
+
   if (typeof body.secret === 'string') {
     const nextSecret = body.secret.trim()
 
     if (nextSecret.length > 0) {
-      if (!nextSecret.startsWith('whsec_')) {
+      if (!nextSecret.startsWith(SECRET_PREFIX)) {
         return c.json(
           {
             error: 'invalid_secret',
             message: 'Secret must start with whsec_',
+          },
+          400
+        )
+      }
+
+      if (nextSecret.slice(SECRET_PREFIX.length).length < MIN_SECRET_SUFFIX_LENGTH) {
+        return c.json(
+          {
+            error: 'invalid_secret',
+            message: 'Secret must include at least 13 characters after whsec_',
           },
           400
         )

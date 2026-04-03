@@ -4,10 +4,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   AlertCircle,
-  Check,
   CheckCircle2,
   ChevronDown,
-  Copy,
   ExternalLink,
   Eye,
   EyeOff,
@@ -16,6 +14,7 @@ import {
 } from 'lucide-react'
 import {
   type CSSProperties,
+  type KeyboardEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -25,43 +24,45 @@ import {
 } from 'react'
 import { z } from 'zod'
 import { getAccessToken } from '../../lib/access-token'
+import { handleEnterAdvance } from '../../lib/forms/enter-navigation'
 import { useMobile } from '../../lib/hooks/use-mobile'
-import { apiFetch, getApiBaseUrl } from '../../lib/http'
+import { ApiError, apiFetch, getApiBaseUrl } from '../../lib/http'
 
-type ToolName = 'zapier' | 'make'
+type ToolName = 'zapier' | 'make' | 'bubble'
 type StepNumber = 1 | 2 | 3
 type Direction = 'forward' | 'back'
 
 const destinationSchema = z
   .string()
   .trim()
-  .url('Please enter a valid URL starting with https://')
-  .startsWith('https://', 'Please enter a valid URL starting with https://')
+  .url('Enter a valid https:// destination URL')
+  .startsWith('https://', 'Enter a valid https:// destination URL')
 
 const stepTwoSchema = z.object({
-  name: z.string().trim().min(2, 'Please add a name for your endpoint.').max(80),
+  name: z.string().trim().min(1, 'Name must be between 1 and 60 characters').max(60, 'Name must be between 1 and 60 characters'),
   destination: destinationSchema,
-  secret: z
-    .string()
-    .trim()
-    .optional()
-    .refine((value) => !value || value.startsWith('whsec_'), {
-      message: 'Stripe secrets start with whsec_ - double-check this value.',
-    }),
 })
 
 const saveSecretSchema = z
   .string()
   .trim()
   .min(1, 'Please enter your Stripe webhook secret.')
-  .startsWith('whsec_', 'Stripe secrets start with whsec_ - double-check this value.')
+  .startsWith('whsec_', 'Stripe secrets start with whsec_')
+  .refine((value) => value.slice('whsec_'.length).length >= 13, {
+    message: 'After whsec_, include at least 13 characters',
+  })
 
 const endpointSuggestions = ['Stripe -> Zapier', 'Stripe -> Make', 'Stripe -> Bubble']
 
-interface CreatedEndpoint {
+type EndpointSummary = {
+  id: string
+  name: string
+  destination: string
+}
+
+type DraftEndpoint = {
   id: string
   tokenHash: string
-  webhookUrl: string
 }
 
 export function OnboardingFlowPage() {
@@ -76,23 +77,25 @@ export function OnboardingFlowPage() {
   const [tool, setTool] = useState<ToolName>('zapier')
   const [expandedInstruction, setExpandedInstruction] = useState(1)
   const [destination, setDestination] = useState('')
+  const [destinationServerError, setDestinationServerError] = useState<string | null>(null)
   const [destinationTouched, setDestinationTouched] = useState(false)
   const [destinationFocused, setDestinationFocused] = useState(false)
   const [debouncedDestination, setDebouncedDestination] = useState('')
 
   const [isDestinationEditable, setIsDestinationEditable] = useState(false)
   const [endpointName, setEndpointName] = useState('Stripe -> Make (production)')
-  const [secret, setSecret] = useState('')
-  const [showSecret, setShowSecret] = useState(false)
   const [stepTwoError, setStepTwoError] = useState<string | null>(null)
-  const [isCreatingEndpoint, setIsCreatingEndpoint] = useState(false)
-  const [createdEndpoint, setCreatedEndpoint] = useState<CreatedEndpoint | null>(null)
-  const [isCopied, setIsCopied] = useState(false)
 
-  const [inlineSecret, setInlineSecret] = useState('')
-  const [saveSecretError, setSaveSecretError] = useState<string | null>(null)
-  const [isSavingSecret, setIsSavingSecret] = useState(false)
-  const [secretSaved, setSecretSaved] = useState(false)
+  const [secret, setSecret] = useState('')
+  const [secretVisible, setSecretVisible] = useState(false)
+  const [stepThreeError, setStepThreeError] = useState<string | null>(null)
+  const [isPreparingEndpoint, setIsPreparingEndpoint] = useState(false)
+  const [isCompletingSetup, setIsCompletingSetup] = useState(false)
+  const [existingEndpoints, setExistingEndpoints] = useState<EndpointSummary[]>([])
+  const [draftEndpointId, setDraftEndpointId] = useState<string | null>(null)
+  const [draftTokenHash, setDraftTokenHash] = useState('')
+  const [draftName, setDraftName] = useState('')
+  const [draftDestination, setDraftDestination] = useState('')
 
   const [containerHeight, setContainerHeight] = useState(0)
   const stepRefs = useRef<Record<number, HTMLDivElement | null>>({
@@ -100,6 +103,7 @@ export function OnboardingFlowPage() {
     2: null,
     3: null,
   })
+  const completedRef = useRef(false)
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -110,10 +114,26 @@ export function OnboardingFlowPage() {
   }, [destination])
 
   useEffect(() => {
+    return () => {
+      if (!draftEndpointId || completedRef.current) return
+
+      void (async () => {
+        try {
+          const token = await getAccessToken()
+          await apiFetch(`/endpoints/${draftEndpointId}`, token, { method: 'DELETE' })
+        } catch {
+          // Best effort cleanup on unmount.
+        }
+      })()
+    }
+  }, [draftEndpointId])
+
+  useEffect(() => {
     async function guardExistingEndpoints() {
       try {
         const token = await getAccessToken()
-        const endpoints = await apiFetch<Array<{ id: string }>>('/endpoints', token)
+        const endpoints = await apiFetch<EndpointSummary[]>('/endpoints', token)
+        setExistingEndpoints(endpoints)
         if (endpoints.length > 0) {
           router.replace('/dashboard')
         }
@@ -124,6 +144,28 @@ export function OnboardingFlowPage() {
 
     void guardExistingEndpoints()
   }, [router])
+
+  const existingEndpointNames = useMemo(
+    () =>
+      new Set(
+        existingEndpoints
+          .filter((endpoint) => endpoint.id !== draftEndpointId)
+          .map((endpoint) => endpoint.name.trim().toLowerCase())
+      ),
+    [existingEndpoints, draftEndpointId]
+  )
+
+  const existingEndpointDestinations = useMemo(
+    () =>
+      new Set(
+        existingEndpoints
+          .filter((endpoint) => endpoint.id !== draftEndpointId)
+          .map((endpoint) => endpoint.destination.trim().toLowerCase())
+      ),
+    [existingEndpoints, draftEndpointId]
+  )
+
+  const webhookUrl = draftTokenHash ? `${getApiBaseUrl()}/webhook/${draftTokenHash}` : ''
 
   useEffect(() => {
     const active = stepRefs.current[step]
@@ -138,17 +180,19 @@ export function OnboardingFlowPage() {
     setContainerHeight(active.getBoundingClientRect().height)
 
     return () => observer.disconnect()
-  }, [step, isMobile, createdEndpoint])
+  }, [step, isMobile])
 
   const destinationResult = useMemo(() => {
     if (!destinationTouched) return null
     return destinationSchema.safeParse(debouncedDestination)
   }, [debouncedDestination, destinationTouched])
 
-  const destinationError =
+  const destinationValidationError =
     destinationResult && !destinationResult.success
-      ? destinationResult.error.issues[0]?.message ?? 'Please enter a valid URL starting with https://'
+      ? destinationResult.error.issues[0]?.message ?? 'Enter a valid https:// destination URL'
       : null
+
+  const destinationError = destinationServerError ?? destinationValidationError
 
   const hasValidDestination = !!destinationResult?.success
 
@@ -224,20 +268,93 @@ export function OnboardingFlowPage() {
     []
   )
 
+  async function cleanupDraftEndpoint(silent = true) {
+    if (!draftEndpointId || completedRef.current) return
+
+    try {
+      const token = await getAccessToken()
+      await apiFetch(`/endpoints/${draftEndpointId}`, token, { method: 'DELETE' })
+    } catch (error) {
+      if (!silent) {
+        setStepTwoError(error instanceof Error ? error.message : 'Could not prepare endpoint.')
+      }
+    }
+  }
+
+  async function ensureDraftEndpoint(name: string, destination: string): Promise<DraftEndpoint> {
+    const normalizedName = name.trim()
+    const normalizedDestination = destination.trim()
+
+    if (!normalizedName || !normalizedDestination) {
+      throw new Error('Name and destination are required.')
+    }
+
+    if (
+      draftEndpointId &&
+      draftName.trim() === normalizedName &&
+      draftDestination.trim() === normalizedDestination
+    ) {
+      return {
+        id: draftEndpointId,
+        tokenHash: draftTokenHash,
+      }
+    }
+
+    if (draftEndpointId) {
+      const token = await getAccessToken()
+      const payload: { name?: string; destination?: string } = {}
+
+      if (draftName.trim() !== normalizedName) payload.name = normalizedName
+      if (draftDestination.trim() !== normalizedDestination) payload.destination = normalizedDestination
+
+      if (Object.keys(payload).length > 0) {
+        await apiFetch(`/endpoints/${draftEndpointId}`, token, {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        })
+      }
+
+      setDraftName(normalizedName)
+      setDraftDestination(normalizedDestination)
+
+      return {
+        id: draftEndpointId,
+        tokenHash: draftTokenHash,
+      }
+    }
+
+    const token = await getAccessToken()
+    const draft = await apiFetch<{ id: string; tokenHash: string }>('/endpoints', token, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: normalizedName,
+        destination: normalizedDestination,
+      }),
+    })
+
+    setDraftEndpointId(draft.id)
+    setDraftTokenHash(draft.tokenHash)
+    setDraftName(normalizedName)
+    setDraftDestination(normalizedDestination)
+
+    return draft
+  }
+
   async function handleContinueStepOne() {
     setDestinationTouched(true)
+    setDestinationServerError(null)
     const parsed = destinationSchema.safeParse(destination.trim())
     if (!parsed.success) return
     transitionTo(2)
   }
 
-  async function handleCreateEndpoint() {
+  async function handleContinueStepTwo() {
     setStepTwoError(null)
+    setDestinationServerError(null)
 
     const parsed = stepTwoSchema.safeParse({
       name: endpointName,
       destination,
-      secret,
     })
 
     if (!parsed.success) {
@@ -245,78 +362,163 @@ export function OnboardingFlowPage() {
       return
     }
 
-    setIsCreatingEndpoint(true)
-    try {
-      const token = await getAccessToken()
-      const response = await apiFetch<{ id: string; tokenHash: string }>('/endpoints', token, {
-        method: 'POST',
-        body: JSON.stringify({
-          name: parsed.data.name,
-          destination: parsed.data.destination,
-          secret: parsed.data.secret || undefined,
-        }),
-      })
-
-      setCreatedEndpoint({
-        id: response.id,
-        tokenHash: response.tokenHash,
-        webhookUrl: `${getApiBaseUrl()}/webhook/${response.tokenHash}`,
-      })
-      setSecretSaved(Boolean(parsed.data.secret))
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Something went wrong creating your endpoint.'
-      if (message.toLowerCase().includes('plan endpoint limit')) {
-        setStepTwoError(
-          "You've reached the endpoint limit for the Free plan (1 endpoint). Go to your endpoints page to manage existing ones."
-        )
-      } else {
-        setStepTwoError('Something went wrong creating your endpoint.')
-      }
-    } finally {
-      setIsCreatingEndpoint(false)
-    }
-  }
-
-  async function handleSaveSecret() {
-    if (!createdEndpoint) return
-
-    setSaveSecretError(null)
-    const parsed = saveSecretSchema.safeParse(inlineSecret)
-    if (!parsed.success) {
-      setSaveSecretError(
-        parsed.error.issues[0]?.message ??
-          "Couldn't save the secret. You can add it later from your endpoints page."
-      )
+    const normalizedName = parsed.data.name.toLowerCase()
+    if (existingEndpointNames.has(normalizedName)) {
+      setStepTwoError('You already have an endpoint with this name')
       return
     }
 
-    setIsSavingSecret(true)
+    const normalizedDestination = parsed.data.destination.toLowerCase()
+    if (existingEndpointDestinations.has(normalizedDestination)) {
+      setDestinationTouched(true)
+      setDestinationServerError('You already have an endpoint with this destination')
+      transitionTo(1)
+      return
+    }
+
+    setIsPreparingEndpoint(true)
     try {
+      await ensureDraftEndpoint(parsed.data.name, parsed.data.destination)
+      setSecret('')
+      setStepThreeError(null)
+      transitionTo(3)
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409 && error.code === 'conflict') {
+        if (error.field === 'name') {
+          setStepTwoError('You already have an endpoint with this name')
+          return
+        }
+
+        if (error.field === 'destination') {
+          setDestinationTouched(true)
+          setDestinationServerError('You already have an endpoint with this destination')
+          transitionTo(1)
+          return
+        }
+      }
+
+      setStepTwoError(error instanceof Error ? error.message : 'Could not prepare endpoint.')
+    } finally {
+      setIsPreparingEndpoint(false)
+    }
+  }
+
+  async function handleCompleteSetup() {
+    const trimmedName = endpointName.trim()
+    if (!trimmedName) {
+      setStepTwoError('Name must be between 1 and 60 characters')
+      setStepThreeError(null)
+      transitionTo(2)
+      return
+    }
+
+    const trimmedDestination = destination.trim()
+    if (existingEndpointNames.has(trimmedName.toLowerCase())) {
+      setStepTwoError('You already have an endpoint with this name')
+      setStepThreeError(null)
+      transitionTo(2)
+      return
+    }
+
+    try {
+      const parsedUrl = new URL(trimmedDestination)
+      if (parsedUrl.protocol !== 'https:') {
+        throw new Error('invalid protocol')
+      }
+    } catch {
+      setDestinationTouched(true)
+      setDestinationServerError('Enter a valid https:// destination URL')
+      setStepThreeError(null)
+      transitionTo(1)
+      return
+    }
+
+    if (existingEndpointDestinations.has(trimmedDestination.toLowerCase())) {
+      setDestinationTouched(true)
+      setDestinationServerError('You already have an endpoint with this destination')
+      setStepThreeError(null)
+      transitionTo(1)
+      return
+    }
+
+    const trimmedSecret = secret.trim()
+    if (!trimmedSecret) {
+      setStepThreeError('Stripe webhook secret is required')
+      return
+    }
+
+    const parsed = saveSecretSchema.safeParse(trimmedSecret)
+    if (!parsed.success) {
+      setStepThreeError(parsed.error.issues[0]?.message ?? 'Invalid secret format')
+      return
+    }
+
+    setStepThreeError(null)
+    setIsCompletingSetup(true)
+    try {
+      const draft = await ensureDraftEndpoint(trimmedName, trimmedDestination)
       const token = await getAccessToken()
-      await apiFetch(`/endpoints/${createdEndpoint.id}`, token, {
+      await apiFetch(`/endpoints/${draft.id}`, token, {
         method: 'PATCH',
         body: JSON.stringify({
           secret: parsed.data,
         }),
       })
-      setSecretSaved(true)
-      setInlineSecret('')
-    } catch {
-      setSaveSecretError(
-        "Couldn't save the secret. You can add it later from your endpoints page."
-      )
+
+      completedRef.current = true
+      router.push('/dashboard')
+    } catch (error) {
+      if (error instanceof ApiError) {
+        if (error.status === 409 && error.field === 'name') {
+          setStepTwoError('You already have an endpoint with this name')
+          setStepThreeError(null)
+          transitionTo(2)
+          return
+        }
+
+        if (error.status === 409 && error.field === 'destination') {
+          setDestinationTouched(true)
+          setDestinationServerError('You already have an endpoint with this destination')
+          setStepThreeError(null)
+          transitionTo(1)
+          return
+        }
+
+        if (error.status === 400) {
+          setStepThreeError('Invalid secret format')
+          return
+        }
+      }
+
+      setStepThreeError('Something went wrong. Please try again.')
     } finally {
-      setIsSavingSecret(false)
+      setIsCompletingSetup(false)
     }
   }
 
-  async function handleCopy(text: string) {
-    await navigator.clipboard.writeText(text)
-    setIsCopied(true)
-    window.setTimeout(() => setIsCopied(false), 2000)
+  function handleStepOneKeyDown(event: KeyboardEvent<HTMLElement>) {
+    handleEnterAdvance(event, {
+      onComplete: () => {
+        void handleContinueStepOne()
+      },
+    })
   }
 
-  const showInlineSecretStep = createdEndpoint && !secretSaved
+  function handleStepTwoKeyDown(event: KeyboardEvent<HTMLElement>) {
+    handleEnterAdvance(event, {
+      onComplete: () => {
+        void handleContinueStepTwo()
+      },
+    })
+  }
+
+  function handleStepThreeKeyDown(event: KeyboardEvent<HTMLElement>) {
+    handleEnterAdvance(event, {
+      onComplete: () => {
+        void handleCompleteSetup()
+      },
+    })
+  }
 
   return (
     <div
@@ -333,9 +535,14 @@ export function OnboardingFlowPage() {
             <span className="h-2 w-2 rounded-full bg-[#22c55e] shadow-[0_0_10px_rgba(34,197,94,0.6)]" />
             <span className="font-display text-lg font-bold tracking-[-0.4px] text-white">Perspectify</span>
           </Link>
-          <Link className="text-sm text-zinc-500 transition hover:text-white" href="/dashboard">
-            Already set up? Go to dashboard →
-          </Link>
+          <div className="text-sm text-zinc-500">
+            <Link className="hidden md:inline transition hover:text-white" href="/dashboard">
+              Already set up? Go to dashboard →
+            </Link>
+            <Link className="md:hidden text-sm text-zinc-500" href="/login">
+              Sign in
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -358,9 +565,11 @@ export function OnboardingFlowPage() {
                 destinationTouched={destinationTouched}
                 hasValidDestination={hasValidDestination}
                 isMobile={isMobile}
+                onEnterContinue={handleStepOneKeyDown}
                 onBlurInput={() => setDestinationFocused(false)}
                 onChangeDestination={(next) => {
                   setDestination(next)
+                  setDestinationServerError(null)
                   if (!destinationTouched) setDestinationTouched(true)
                 }}
                 onFocusInput={() => {
@@ -376,45 +585,41 @@ export function OnboardingFlowPage() {
 
             <div ref={setStepRef(2)} style={getStepStyle(2)}>
               <StepTwo
-                createdEndpoint={createdEndpoint}
                 destination={destination}
                 endpointName={endpointName}
-                isCreatingEndpoint={isCreatingEndpoint}
+                isPreparingEndpoint={isPreparingEndpoint}
                 isDestinationEditable={isDestinationEditable}
                 isMobile={isMobile}
-                isSubmittingDisabled={!hasValidDestination || endpointName.trim().length < 2 || isCreatingEndpoint}
-                isCopied={isCopied}
-                onChangeEndpointName={setEndpointName}
-                onChangeSecret={setSecret}
-                onCopyUrl={handleCopy}
-                onCreate={handleCreateEndpoint}
+                isSubmittingDisabled={!hasValidDestination || endpointName.trim().length < 1 || isPreparingEndpoint}
+                onEnterContinue={handleStepTwoKeyDown}
+                onChangeEndpointName={(value) => {
+                  setEndpointName(value)
+                  if (stepTwoError) setStepTwoError(null)
+                }}
+                onContinue={handleContinueStepTwo}
                 onDestinationEditToggle={() => setIsDestinationEditable((value) => !value)}
                 onDestinationSave={(next) => {
                   setDestination(next)
+                  setDestinationServerError(null)
                   setIsDestinationEditable(false)
                   setDestinationTouched(true)
                 }}
                 onSuggestion={(value) => setEndpointName(value)}
-                onTransitionNext={() => transitionTo(3)}
-                secret={secret}
-                showSecret={showSecret}
                 stepTwoError={stepTwoError}
-                setShowSecret={setShowSecret}
               />
             </div>
 
             <div ref={setStepRef(3)} style={getStepStyle(3)}>
               <StepThree
-                createdEndpoint={createdEndpoint}
-                isMobile={isMobile}
-                isSavingSecret={isSavingSecret}
-                onCopy={handleCopy}
-                onSaveSecret={handleSaveSecret}
-                saveSecretError={saveSecretError}
-                secretSaved={secretSaved}
-                setInlineSecret={setInlineSecret}
-                inlineSecret={inlineSecret}
-                showInlineSecretStep={Boolean(showInlineSecretStep)}
+                isCompletingSetup={isCompletingSetup}
+                onCompleteSetup={handleCompleteSetup}
+                onEnterSubmit={handleStepThreeKeyDown}
+                secret={secret}
+                secretVisible={secretVisible}
+                setSecret={setSecret}
+                setSecretVisible={setSecretVisible}
+                stepThreeError={stepThreeError}
+                webhookUrl={webhookUrl}
               />
             </div>
           </div>
@@ -438,27 +643,20 @@ export function OnboardingFlowPage() {
                 </button>
               ) : null}
 
-              {step === 2 && !createdEndpoint ? (
+              {step === 2 ? (
                 <button
                   className={`h-12 w-full rounded-xl font-display text-sm font-bold ${
-                    hasValidDestination && endpointName.trim().length >= 2 && !isCreatingEndpoint
+                    hasValidDestination && endpointName.trim().length >= 1 && !isPreparingEndpoint
                       ? 'bg-[#22c55e] text-black'
                       : 'cursor-not-allowed bg-zinc-800 text-zinc-600'
                   }`}
-                  disabled={!hasValidDestination || endpointName.trim().length < 2 || isCreatingEndpoint}
+                  disabled={!hasValidDestination || endpointName.trim().length < 1 || isPreparingEndpoint}
                   onClick={() => {
-                    void handleCreateEndpoint()
+                    void handleContinueStepTwo()
                   }}
                   type="button"
                 >
-                  {isCreatingEndpoint ? (
-                    <span className="inline-flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Creating...
-                    </span>
-                  ) : (
-                    'Continue →'
-                  )}
+                  {isPreparingEndpoint ? 'Preparing...' : 'Continue →'}
                 </button>
               ) : null}
             </div>
@@ -540,6 +738,7 @@ function StepOne({
   destinationTouched,
   destinationFocused,
   hasValidDestination,
+  onEnterContinue,
   onToggleTool,
   onToggleAccordion,
   onChangeDestination,
@@ -554,6 +753,7 @@ function StepOne({
   destinationTouched: boolean
   destinationFocused: boolean
   hasValidDestination: boolean
+  onEnterContinue: (event: KeyboardEvent<HTMLElement>) => void
   onToggleTool: (tool: ToolName) => void
   onToggleAccordion: (index: number) => void
   onChangeDestination: (value: string) => void
@@ -575,15 +775,26 @@ function StepOne({
           'Make will show you a webhook URL like hook.eu1.make.com/... Copy it - you\'ll paste it below.',
         ]
 
+  const bubbleSteps = [
+    'Go to your Bubble app editor and open the "Plugins" tab in the left sidebar.',
+    'Search for "API Connector" and install it if you haven\'t already.',
+    'Go to "Backend Workflows" in your Bubble app (enable in Settings → Collaboration if hidden).',
+    'Create a new API Workflow. Set trigger to "Webhook" — Bubble generates a unique URL. Copy it.',
+  ]
+
+  const stepsForTool = tool === 'bubble' ? bubbleSteps : steps
+
   const callout =
     tool === 'zapier'
       ? "Don't click 'Test trigger' in Zapier yet. Come back here first."
-      : 'Save your scenario before leaving Make - otherwise the webhook URL may not activate.'
+      : tool === 'make'
+        ? 'Save your scenario before leaving Make - otherwise the webhook URL may not activate.'
+        : "Make sure 'Expose as a public API endpoint' is enabled in your workflow settings, otherwise Perspectify won't be able to deliver events to it."
 
   const hideInstructions = isMobile && (destinationFocused || hasValidDestination)
 
   return (
-    <section>
+    <section onKeyDown={onEnterContinue}>
       <p className="text-xs uppercase tracking-[0.22em] text-zinc-500">Step 1 of 3</p>
       <h1 className="mt-2 font-display text-[22px] font-bold tracking-[-0.5px] text-white md:text-[28px]">
         Create a webhook in Zapier or Make
@@ -593,7 +804,7 @@ function StepOne({
         Perspectify will send every captured event here.
       </p>
 
-      <div className="mt-8 grid grid-cols-2 border-b border-white/10">
+      <div className="mt-8 grid grid-cols-3 border-b border-white/10">
         <button
           className={`pb-3 text-sm ${tool === 'zapier' ? 'border-b-2 border-[#22c55e] font-display font-medium text-white' : 'border-b-2 border-transparent text-zinc-500 hover:text-zinc-300'}`}
           onClick={() => onToggleTool('zapier')}
@@ -608,6 +819,13 @@ function StepOne({
         >
           Make
         </button>
+        <button
+          className={`pb-3 text-sm ${tool === 'bubble' ? 'border-b-2 border-[#22c55e] font-display font-medium text-white' : 'border-b-2 border-transparent text-zinc-500 hover:text-zinc-300'}`}
+          onClick={() => onToggleTool('bubble')}
+          type="button"
+        >
+          Bubble
+        </button>
       </div>
 
       <div
@@ -617,7 +835,7 @@ function StepOne({
       >
         {isMobile ? (
           <div className="divide-y divide-white/10 rounded-xl border border-white/10 bg-[#1a1a1a]">
-            {steps.map((line, index) => {
+            {stepsForTool.map((line, index) => {
               const item = index + 1
               const isOpen = expandedInstruction === item
               return (
@@ -634,7 +852,7 @@ function StepOne({
                     <ChevronDown className={`h-4 w-4 text-zinc-500 transition ${isOpen ? 'rotate-180' : ''}`} />
                   </button>
                   <div className={`px-4 transition-all ${isOpen ? 'max-h-40 pb-3 opacity-100' : 'max-h-0 overflow-hidden opacity-0'}`}>
-                    <p className="pl-9 text-xs text-zinc-500">Follow this step in {tool === 'zapier' ? 'Zapier' : 'Make'} and return here.</p>
+                    <p className="pl-9 text-xs text-zinc-500">Follow this step in {tool === 'zapier' ? 'Zapier' : tool === 'make' ? 'Make' : 'Bubble'} and return here.</p>
                   </div>
                 </div>
               )
@@ -643,7 +861,7 @@ function StepOne({
         ) : (
           <div className="rounded-xl border border-white/10 bg-[#1a1a1a] p-6">
             <div className="space-y-4">
-              {steps.map((line, index) => (
+              {stepsForTool.map((line, index) => (
                 <div className="flex items-start gap-4" key={line}>
                   <span className="w-6 shrink-0 font-display text-[13px] font-bold text-[#22c55e]">
                     {(index + 1).toString().padStart(2, '0')}
@@ -652,8 +870,8 @@ function StepOne({
                 </div>
               ))}
             </div>
-            <div className="mt-4 flex items-start gap-2 rounded-lg border border-[#22c55e]/20 bg-[#22c55e]/[0.06] p-4">
-              <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#22c55e]" />
+            <div className={`mt-4 flex items-start gap-2 rounded-lg p-4 ${tool === 'bubble' ? 'border border-amber-500/25 bg-amber-500/[0.08]' : 'border border-[#22c55e]/20 bg-[#22c55e]/[0.06]'}`}>
+              <Info className={`mt-0.5 h-4 w-4 shrink-0 ${tool === 'bubble' ? 'text-amber-400' : 'text-[#22c55e]'}`} />
               <p className="text-[13px] text-zinc-300">{callout}</p>
             </div>
           </div>
@@ -661,7 +879,7 @@ function StepOne({
       </div>
 
       <div className="mt-8">
-        <label className="mb-2 block text-[13px] text-zinc-400">Your Zapier or Make webhook URL</label>
+        <label className="mb-2 block text-[13px] text-zinc-400">Your Zapier, Make, or Bubble webhook URL</label>
         <input
           className={`w-full rounded-xl border bg-[#1a1a1a] px-4 py-3 text-sm text-white outline-none ${
             destinationError
@@ -670,16 +888,19 @@ function StepOne({
                 ? 'border-[#22c55e]/30'
                 : 'border-white/10'
           }`}
+          pattern="https://.*"
           onBlur={onBlurInput}
           onChange={(event) => onChangeDestination(event.target.value)}
           onFocus={onFocusInput}
           placeholder="https://hooks.zapier.com/hooks/catch/..."
+          required
+          type="url"
           value={destination}
         />
         {destinationError ? (
           <p className="mt-2 text-xs text-[#ef4444]">{destinationError}</p>
         ) : null}
-        <p className="mt-2 text-xs text-zinc-600">This is the URL from Zapier or Make - not a Stripe URL.</p>
+        <p className="mt-2 text-xs text-zinc-600">This is the URL from Zapier, Make, or Bubble - not a Stripe URL.</p>
       </div>
     </section>
   )
@@ -688,113 +909,61 @@ function StepOne({
 function StepTwo({
   destination,
   endpointName,
-  secret,
-  showSecret,
+  isPreparingEndpoint,
   isDestinationEditable,
   isSubmittingDisabled,
-  isCreatingEndpoint,
   isMobile,
+  onEnterContinue,
   stepTwoError,
-  createdEndpoint,
-  isCopied,
   onDestinationEditToggle,
   onDestinationSave,
   onChangeEndpointName,
-  onChangeSecret,
   onSuggestion,
-  onCreate,
-  onTransitionNext,
-  onCopyUrl,
-  setShowSecret,
+  onContinue,
 }: {
   destination: string
   endpointName: string
-  secret: string
-  showSecret: boolean
+  isPreparingEndpoint: boolean
   isDestinationEditable: boolean
   isSubmittingDisabled: boolean
-  isCreatingEndpoint: boolean
   isMobile: boolean
+  onEnterContinue: (event: KeyboardEvent<HTMLElement>) => void
   stepTwoError: string | null
-  createdEndpoint: CreatedEndpoint | null
-  isCopied: boolean
   onDestinationEditToggle: () => void
   onDestinationSave: (value: string) => void
   onChangeEndpointName: (value: string) => void
-  onChangeSecret: (value: string) => void
   onSuggestion: (value: string) => void
-  onCreate: () => Promise<void>
-  onTransitionNext: () => void
-  onCopyUrl: (value: string) => Promise<void>
-  setShowSecret: (value: boolean) => void
+  onContinue: () => Promise<void>
 }) {
   const [draftDestination, setDraftDestination] = useState(destination)
+  const destinationInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     setDraftDestination(destination)
   }, [destination])
 
-  const secretError =
-    secret.trim() && !secret.trim().startsWith('whsec_')
-      ? 'Stripe secrets start with whsec_ - double-check this value.'
-      : null
+  useEffect(() => {
+    if (!isDestinationEditable) return
 
-  if (createdEndpoint) {
-    return (
-      <section className="text-center">
-        <div className="relative mx-auto h-10 w-28 overflow-hidden">
-          {[...Array.from({ length: 6 })].map((_, index) => (
-            <span
-              className="absolute h-2 w-1 rounded bg-[#22c55e]"
-              key={index}
-              style={{
-                left: `${index * 16 + 6}px`,
-                animation: `confetti-drop 900ms ease ${index * 80}ms infinite`,
-              }}
-            />
-          ))}
-        </div>
+    const input = destinationInputRef.current
+    if (!input) return
 
-        <h2 className="mt-3 font-display text-[20px] font-bold text-white">Your endpoint is ready</h2>
-        <p className="mt-2 text-sm text-zinc-500">Your unique Perspectify URL:</p>
-
-        <div className="mt-4 rounded-xl border border-[#22c55e]/30 bg-[#1a1a1a] p-4 text-left">
-          <p className="break-all font-mono text-sm text-[#22c55e]">{createdEndpoint.webhookUrl}</p>
-          <button
-            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[#22c55e]/20 bg-[#22c55e]/10 px-4 py-2 font-display text-[13px] font-bold text-[#22c55e]"
-            onClick={() => {
-              void onCopyUrl(createdEndpoint.webhookUrl)
-            }}
-            type="button"
-          >
-            {isCopied ? 'Copied ✓' : 'Copy URL'}
-          </button>
-        </div>
-
-        <p className="mt-4 text-center text-sm text-zinc-500">
-          This is the URL you&apos;ll add to Stripe in the next step.
-        </p>
-
-        <button
-          className="mt-6 inline-flex rounded-xl bg-[#22c55e] px-6 py-3 font-display text-sm font-bold text-black transition hover:-translate-y-px hover:opacity-90"
-          onClick={onTransitionNext}
-          type="button"
-        >
-          Continue to Stripe setup →
-        </button>
-      </section>
-    )
-  }
+    window.requestAnimationFrame(() => {
+      const end = input.value.length
+      input.focus()
+      input.setSelectionRange(end, end)
+      input.scrollLeft = input.scrollWidth
+    })
+  }, [isDestinationEditable])
 
   return (
-    <section>
+    <section onKeyDown={onEnterContinue}>
       <p className="text-xs uppercase tracking-[0.22em] text-zinc-500">Step 2 of 3</p>
       <h1 className="mt-2 font-display text-[22px] font-bold tracking-[-0.5px] text-white md:text-[28px]">
         Set up your Perspectify endpoint
       </h1>
       <p className="mt-3 text-[15px] leading-[1.6] text-zinc-400">
-        Give it a name, confirm your destination, and paste your Stripe webhook secret.
-        You&apos;ll get the secret in the next step.
+        Give it a name and confirm your destination.
       </p>
 
       <div className="mt-8 space-y-5">
@@ -802,14 +971,23 @@ function StepTwo({
           <label className="mb-2 block text-[13px] text-zinc-400">Where to deliver your events</label>
           <div className="relative">
             <CheckCircle2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#22c55e]" />
-            <input
-              className="w-full rounded-xl border border-[#22c55e]/20 bg-[#1a1a1a] py-3 pl-9 pr-16 text-sm text-zinc-300 outline-none"
-              onChange={(event) => setDraftDestination(event.target.value)}
-              readOnly={!isDestinationEditable}
-              value={draftDestination}
-            />
+            {isDestinationEditable ? (
+              <input
+                className="w-full rounded-xl border border-[#22c55e]/20 bg-[#1a1a1a] py-3 pl-9 pr-24 text-sm text-zinc-300 outline-none cursor-text overflow-x-auto whitespace-nowrap"
+                ref={destinationInputRef}
+                onChange={(event) => setDraftDestination(event.target.value)}
+                pattern="https://.*"
+                required
+                type="url"
+                value={draftDestination}
+              />
+            ) : (
+              <div className="w-full rounded-xl border border-[#22c55e]/20 bg-[#1a1a1a] py-3 pl-9 pr-24 text-sm text-zinc-300 cursor-default overflow-hidden text-ellipsis whitespace-nowrap">
+                {draftDestination}
+              </div>
+            )}
             <button
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500 hover:text-zinc-300"
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded bg-[#1a1a1a] px-1 text-xs text-zinc-500 hover:text-zinc-300"
               onClick={() => {
                 if (isDestinationEditable) {
                   onDestinationSave(draftDestination)
@@ -829,8 +1007,10 @@ function StepTwo({
           <p className="mb-2 text-xs text-zinc-600">Something that helps you identify it later.</p>
           <input
             className="w-full rounded-xl border border-white/10 bg-[#1a1a1a] px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+            minLength={1}
             onChange={(event) => onChangeEndpointName(event.target.value)}
             placeholder="Stripe -> Make (production)"
+            required
             value={endpointName}
           />
           <div className="mt-2 flex flex-wrap gap-2">
@@ -847,39 +1027,6 @@ function StepTwo({
           </div>
         </div>
 
-        <div>
-          <div className="mb-1 flex items-center gap-2">
-            <label className="text-[13px] text-zinc-400">Stripe webhook secret</label>
-            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-zinc-500">Optional</span>
-          </div>
-          <p className="mb-2 text-xs leading-[1.5] text-zinc-600">
-            You&apos;ll get this from Stripe in the next step.
-            You can skip this for now and add it from your endpoints page.
-          </p>
-          <div className="relative">
-            <input
-              className="w-full rounded-xl border border-white/10 bg-[#1a1a1a] px-4 py-3 pr-20 text-sm text-white outline-none focus:border-white/20"
-              onChange={(event) => onChangeSecret(event.target.value)}
-              placeholder="whsec_..."
-              type={showSecret ? 'text' : 'password'}
-              value={secret}
-            />
-            <button
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
-              onClick={() => setShowSecret(!showSecret)}
-              type="button"
-            >
-              {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-          {secret.trim() && secret.trim().startsWith('whsec_') ? (
-            <p className="mt-2 inline-flex items-center gap-1 text-xs text-[#22c55e]">
-              <Check className="h-3.5 w-3.5" />
-              Secret format looks good.
-            </p>
-          ) : null}
-          {secretError ? <p className="mt-2 text-xs text-[#ef4444]">{secretError}</p> : null}
-        </div>
       </div>
 
       {stepTwoError ? (
@@ -903,18 +1050,11 @@ function StepTwo({
             }`}
             disabled={isSubmittingDisabled}
             onClick={() => {
-              void onCreate()
+              void onContinue()
             }}
             type="button"
           >
-            {isCreatingEndpoint ? (
-              <span className="inline-flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Creating...
-              </span>
-            ) : (
-              'Continue →'
-            )}
+            {isPreparingEndpoint ? 'Preparing...' : 'Continue →'}
           </button>
         </div>
       ) : null}
@@ -923,32 +1063,44 @@ function StepTwo({
 }
 
 function StepThree({
-  createdEndpoint,
-  isMobile,
-  showInlineSecretStep,
-  inlineSecret,
-  isSavingSecret,
-  saveSecretError,
-  secretSaved,
-  setInlineSecret,
-  onSaveSecret,
-  onCopy,
+  isCompletingSetup,
+  onCompleteSetup,
+  onEnterSubmit,
+  secret,
+  secretVisible,
+  setSecret,
+  setSecretVisible,
+  stepThreeError,
+  webhookUrl,
 }: {
-  createdEndpoint: CreatedEndpoint | null
-  isMobile: boolean
-  showInlineSecretStep: boolean
-  inlineSecret: string
-  isSavingSecret: boolean
-  saveSecretError: string | null
-  secretSaved: boolean
-  setInlineSecret: (value: string) => void
-  onSaveSecret: () => Promise<void>
-  onCopy: (value: string) => Promise<void>
+  isCompletingSetup: boolean
+  onCompleteSetup: () => Promise<void>
+  onEnterSubmit: (event: KeyboardEvent<HTMLElement>) => void
+  secret: string
+  secretVisible: boolean
+  setSecret: (value: string) => void
+  setSecretVisible: (value: boolean) => void
+  stepThreeError: string | null
+  webhookUrl: string
 }) {
-  const webhookUrl = createdEndpoint?.webhookUrl ?? `${getApiBaseUrl()}/webhook/psp_live_...`
+  const [copied, setCopied] = useState(false)
+
+  const secretError =
+    secret.trim() && !secret.trim().startsWith('whsec_')
+      ? 'Stripe secrets start with whsec_'
+      : secret.trim() && secret.trim().startsWith('whsec_') && secret.trim().slice('whsec_'.length).length < 13
+        ? 'After whsec_, include at least 13 characters'
+        : null
+
+  async function copyWebhookUrl() {
+    if (!webhookUrl) return
+    await navigator.clipboard.writeText(webhookUrl)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1200)
+  }
 
   return (
-    <section>
+    <section onKeyDown={onEnterSubmit}>
       <p className="text-xs uppercase tracking-[0.22em] text-zinc-500">Step 3 of 3</p>
       <h1 className="mt-2 font-display text-[22px] font-bold tracking-[-0.5px] text-white md:text-[28px]">
         Add Perspectify to Stripe
@@ -958,27 +1110,11 @@ function StepThree({
         This is the final step - takes about 2 minutes.
       </p>
 
-      <div className="mt-6 rounded-xl border border-[#22c55e]/25 bg-[#22c55e]/[0.06] p-4">
-        <p className="text-xs uppercase tracking-[0.2em] text-[#22c55e]">Your Perspectify URL</p>
-        <div className="mt-2 flex items-start justify-between gap-3">
-          <p className="min-w-0 truncate font-mono text-sm text-white">{webhookUrl}</p>
-          <button
-            className="rounded-lg border border-[#22c55e]/20 bg-[#22c55e]/10 px-3 py-1 text-xs font-bold text-[#22c55e]"
-            onClick={() => {
-              void onCopy(webhookUrl)
-            }}
-            type="button"
-          >
-            Copy URL
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-5 rounded-lg border border-blue-500/20 bg-blue-500/[0.06] p-4">
+      <div className="mt-1 rounded-lg border border-blue-500/20 bg-blue-500/[0.06] p-4">
         <a
           className="inline-flex items-center gap-2 text-sm text-blue-300 hover:underline"
           href="https://dashboard.stripe.com/webhooks"
-          rel="noreferrer"
+          rel="noopener noreferrer"
           target="_blank"
         >
           Opening Stripe Webhooks →
@@ -987,28 +1123,22 @@ function StepThree({
       </div>
 
       <div className="mt-6 space-y-5">
-        <InstructionNumber title="In Stripe, click 'Add endpoint'">
-          {!isMobile ? (
-            <div className="mt-2 rounded-lg border border-white/10 bg-[#1a1a1a] p-3 text-xs text-zinc-500">
-              <p>stripe.com/webhooks</p>
-              <p className="mt-1 border-t border-white/10 pt-2">Endpoints <span className="rounded bg-[#22c55e]/10 px-2 py-0.5 text-[#22c55e]">+ Add endpoint</span></p>
-            </div>
-          ) : (
-            <p className="mt-2 text-xs text-zinc-500">Open Stripe Webhooks and tap + Add endpoint.</p>
-          )}
-        </InstructionNumber>
+        <InstructionNumber title="In Stripe, click 'Add destination'" />
 
         <InstructionNumber number={2} title="In the URL field, paste your Perspectify URL">
-          <div className="mt-2 flex items-center gap-2 rounded-lg border border-[#22c55e]/20 bg-[#1a1a1a] px-3 py-2">
-            <p className="min-w-0 flex-1 truncate font-mono text-[13px] text-[#22c55e]">{webhookUrl}</p>
+          <p className="mt-2 text-xs text-zinc-500">This URL is already generated. Paste this exact value in Stripe.</p>
+          <div className="mt-2 flex gap-2">
+            <div className="h-11 flex-1 rounded-xl border border-green-500/30 bg-[#1a1a1a] px-3 font-mono text-xs text-zinc-200 cursor-text select-text truncate whitespace-nowrap leading-[44px] overflow-hidden">
+              {webhookUrl}
+            </div>
             <button
-              className="rounded bg-[#22c55e]/10 px-2 py-0.5 text-xs text-[#22c55e]"
+              className="h-11 rounded-xl border border-white/15 px-3 text-xs text-zinc-300 hover:border-white/30 hover:text-white"
               onClick={() => {
-                void onCopy(webhookUrl)
+                void copyWebhookUrl()
               }}
               type="button"
             >
-              Copy
+              {copied ? 'Copied' : 'Copy'}
             </button>
           </div>
         </InstructionNumber>
@@ -1020,7 +1150,11 @@ function StepThree({
             <EventTag label="charge.failed" />
             <EventTag label="payment_intent.payment_failed" />
           </div>
-          <p className="mt-2 text-xs text-zinc-600">(Or select 'All events' - Perspectify handles all of them)</p>
+          <p className="mt-2 text-xs text-zinc-600">
+            You can select "All events", but it is usually better to choose a closed set. More events can consume
+            your plan limit faster and add unnecessary load to your automations/app. If you know you need all events,
+            go ahead.
+          </p>
         </InstructionNumber>
 
         <InstructionNumber number={4} title="Click 'Add endpoint' - Stripe will show your webhook secret">
@@ -1028,71 +1162,62 @@ function StepThree({
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
             <p className="text-[13px] text-zinc-300">
               Copy the secret that starts with whsec_
-              You&apos;ll only see it once.
             </p>
           </div>
         </InstructionNumber>
 
-        {showInlineSecretStep ? (
-          <InstructionNumber number={5} title="Paste your webhook secret in Perspectify">
-            <div className="mt-2 flex flex-col gap-2 md:flex-row">
-              <input
-                className="w-full rounded-xl border border-white/10 bg-[#1a1a1a] px-4 py-3 font-mono text-sm text-white outline-none"
-                onChange={(event) => setInlineSecret(event.target.value)}
-                placeholder="whsec_..."
-                value={inlineSecret}
-              />
-              <button
-                className={`rounded-xl px-4 py-3 font-display text-sm font-bold ${
-                  isSavingSecret
-                    ? 'cursor-wait bg-[#22c55e]/70 text-black'
-                    : 'bg-[#22c55e] text-black hover:opacity-90'
-                }`}
-                disabled={isSavingSecret}
-                onClick={() => {
-                  void onSaveSecret()
-                }}
-                type="button"
-              >
-                {isSavingSecret ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Saving...
-                  </span>
-                ) : (
-                  'Save secret'
-                )}
-              </button>
-            </div>
-            {saveSecretError ? (
-              <p className="mt-2 text-xs text-[#ef4444]">
-                {saveSecretError}{' '}
-                <Link className="text-zinc-400 underline" href="/dashboard/endpoints">
-                  Go to endpoints
-                </Link>
-              </p>
-            ) : null}
-          </InstructionNumber>
-        ) : null}
+      </div>
 
-        {secretSaved ? (
-          <p className="inline-flex items-center gap-2 text-sm text-[#22c55e]">
-            <Check className="h-4 w-4" />
-            Secret already saved ✓
-          </p>
-        ) : null}
+      <div className="mt-6">
+        <InstructionNumber number={5} title="Paste your webhook secret in Perspectify">
+        <div className="relative mt-2">
+          <input
+            className={`h-11 w-full rounded-xl border bg-[#1a1a1a] px-4 py-3 pr-12 font-mono text-sm text-white outline-none transition-colors ${
+              secret && !secretError
+                ? 'border-green-500/40'
+                : secretError
+                  ? 'border-red-400'
+                  : 'border-white/10'
+            } focus:border-green-500/40`}
+            onChange={(event) => setSecret(event.target.value)}
+            pattern="whsec_.*"
+            placeholder="whsec_..."
+            required
+            type={secretVisible ? 'text' : 'password'}
+            value={secret}
+          />
+          <button
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+            onClick={() => setSecretVisible(!secretVisible)}
+            tabIndex={-1}
+            type="button"
+          >
+            {secretVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+        {secretError ? <p className="mt-2 text-xs text-[#ef4444]">{secretError}</p> : null}
+        </InstructionNumber>
       </div>
 
       <div className="mt-8">
-        <a
-          className="inline-flex w-full items-center justify-center rounded-xl bg-[#22c55e] py-4 font-display text-base font-bold text-black"
-          href="/dashboard"
+        <button
+          className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-[#22c55e] px-6 font-display text-sm font-bold text-black disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-300"
+          disabled={isCompletingSetup}
+          onClick={() => {
+            void onCompleteSetup()
+          }}
+          type="button"
         >
-          Go to dashboard →
-        </a>
-        <Link className="mt-3 block text-center text-[13px] text-zinc-600 hover:text-zinc-400" href="/dashboard">
-          Skip for now →
-        </Link>
+          {isCompletingSetup ? (
+            <span className="inline-flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Creating endpoint...
+            </span>
+          ) : (
+            'Create endpoint'
+          )}
+        </button>
+        {stepThreeError ? <p className="mt-3 text-sm text-[#ef4444]">{stepThreeError}</p> : null}
       </div>
     </section>
   )
@@ -1112,7 +1237,7 @@ function InstructionNumber({
       <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/15 font-display text-xs text-zinc-400">
         {number}
       </span>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-sm leading-6 text-zinc-300">{title}</p>
         {children}
       </div>

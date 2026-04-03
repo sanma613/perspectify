@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, jsonb, pgEnum, index, boolean } from 'drizzle-orm/pg-core'
+import { pgTable, text, integer, timestamp, jsonb, pgEnum, index, boolean, uniqueIndex } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 
 // ── Enums ─────────────────────────────────────────────────
@@ -38,7 +38,10 @@ export const endpoints = pgTable('endpoints', {
   destination: text('destination').notNull(),       // URL real (Zapier/Make)
   secret:      text('secret').notNull(),            // Stripe webhook secret (HMAC)
   createdAt:   timestamp('created_at').defaultNow().notNull(),
-})
+}, (table) => ({
+  endpointsUserNameUniqueIdx: uniqueIndex('endpoints_user_name_unique').on(table.userId, table.name),
+  endpointsUserDestinationUniqueIdx: uniqueIndex('endpoints_user_destination_unique').on(table.userId, table.destination),
+}))
 
 // ── Events ────────────────────────────────────────────────
 // Cada webhook recibido de Stripe

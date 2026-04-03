@@ -6,6 +6,8 @@ export const endpointSchema = z.object({
   secret: z
     .string()
     .trim()
-    .min(12, 'Secret must be at least 12 characters.')
-    .startsWith('whsec_', 'Secret must start with whsec_.'),
+    .startsWith('whsec_', 'Secret must start with whsec_.')
+    .refine((value) => value.slice('whsec_'.length).length >= 13, {
+      message: 'After whsec_, include at least 13 characters.',
+    }),
 })
