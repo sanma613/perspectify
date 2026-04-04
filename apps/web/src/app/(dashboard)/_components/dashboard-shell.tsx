@@ -215,8 +215,6 @@ function MobileTopBar({ displayName, email }: { displayName: string; email: stri
   const popoverRef = useRef<HTMLDivElement>(null)
   const initials = getInitials(displayName, email)
   const eventsMax = me?.limits.maxEventsPerMonth ?? 0
-  const usagePercent =
-    eventsMax > 0 ? Math.min((eventsThisMonth / eventsMax) * 100, 100) : 0
 
   useEffect(() => {
     if (!popoverOpen) return
@@ -280,30 +278,7 @@ function MobileTopBar({ displayName, email }: { displayName: string; email: stri
 
             <div className="mb-3 h-px bg-white/10" />
 
-            <p className="mb-2 text-xs uppercase tracking-wide text-zinc-500">Events this month</p>
-
-            <div className="mb-1.5 h-1 rounded-full bg-white/10">
-              <div
-                className={`h-full rounded-full transition-all ${
-                  eventsMax !== -1 && eventsThisMonth >= eventsMax
-                    ? 'bg-red-500'
-                    : eventsMax !== -1 && eventsThisMonth >= eventsMax * 0.8
-                      ? 'bg-amber-400'
-                      : 'bg-green-500'
-                }`}
-                style={{ width: `${usagePercent}%` }}
-              />
-            </div>
-
-            <p className="text-xs text-zinc-400">
-              {eventsMax === -1 ? (
-                `${eventsThisMonth.toLocaleString()} events`
-              ) : eventsThisMonth >= eventsMax ? (
-                <span className="text-red-400">Limit reached</span>
-              ) : (
-                `${eventsThisMonth.toLocaleString()} / ${eventsMax.toLocaleString()}`
-              )}
-            </p>
+            {me ? <PlanUsageBar limit={eventsMax} plan={me.plan} used={eventsThisMonth} /> : null}
 
             <div className="my-3 h-px bg-white/10" />
 

@@ -8,6 +8,7 @@ import { ApiError, apiFetch, getApiBaseUrl } from '../../../../lib/http'
 import { handleEnterAdvance } from '../../../../lib/forms/enter-navigation'
 import type { PlanCapabilities } from '../../../../lib/capabilities'
 import { useDashboardData } from '../../../../lib/use-dashboard-data'
+import { usePasswordVisibility } from '../../../../hooks/use-password-visibility'
 import { CopyToClipboard } from './copyToClipboard'
 import { ActionModal } from './action-modal'
 import { FlashMessage } from './flash-message'
@@ -49,8 +50,8 @@ export function CreateEndpointForm({
   const [destinationError, setDestinationError] = useState('')
   const [secretError, setSecretError] = useState('')
   const [globalError, setGlobalError] = useState<string | null>(null)
+  const secretVisibility = usePasswordVisibility()
   const [isLoading, setIsLoading] = useState(false)
-  const [secretVisible, setSecretVisible] = useState(false)
   const [showLimitHint, setShowLimitHint] = useState(false)
   const [showLimitModal, setShowLimitModal] = useState(false)
 
@@ -160,11 +161,11 @@ export function CreateEndpointForm({
     setName('')
     setDestination('')
     setSecret('')
+    if (secretVisibility.visible) secretVisibility.toggle()
     setNameError('')
     setDestinationError('')
     setSecretError('')
     setGlobalError(null)
-    setSecretVisible(false)
     setDraftEndpointId(null)
     setDraftTokenHash('')
     setDraftTokenPrefix('')
@@ -490,17 +491,17 @@ export function CreateEndpointForm({
                   pattern="^whsec_.*$"
                   placeholder="whsec_..."
                   required
-                  type={secretVisible ? 'text' : 'password'}
+                  type={secretVisibility.inputType}
                   value={secret}
                 />
                 <button
-                  aria-label={secretVisible ? 'Hide secret' : 'Show secret'}
+                  aria-label={secretVisibility.visible ? 'Hide' : 'Show'}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
-                  onClick={() => setSecretVisible((value) => !value)}
+                  onClick={secretVisibility.toggle}
                   tabIndex={-1}
                   type="button"
                 >
-                  {secretVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {secretVisibility.visible ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
 

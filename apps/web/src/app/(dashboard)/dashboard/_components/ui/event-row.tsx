@@ -1,9 +1,10 @@
 'use client'
 
-import { ChevronDown, RotateCcw } from 'lucide-react'
+import { ChevronDown, Loader2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { EventResponse } from '../../../../../lib/api-types'
 import { StatusDot } from './status-dot'
+import { UpgradeGate } from './upgrade-gate'
 
 type RowEvent = Pick<
   EventResponse,
@@ -35,6 +36,10 @@ export function EventRow({
   onToggle,
   onRescue,
   rescuePending,
+  rescueError,
+  plan,
+  replayCount,
+  rescueVariant = 'tooltip',
   children,
 }: {
   event: RowEvent
@@ -42,6 +47,10 @@ export function EventRow({
   onToggle: () => void
   onRescue?: () => void
   rescuePending?: boolean
+  rescueError?: string | null
+  plan?: 'free' | 'starter'
+  replayCount?: number
+  rescueVariant?: 'tooltip' | 'bottom-sheet'
   children?: ReactNode
 }) {
   const destination = event.endpointName ?? event.destinationUrl ?? 'Unknown destination'
@@ -70,15 +79,36 @@ export function EventRow({
         <div className="space-y-3 border-t border-white/10 px-3 py-3">
           {children}
           {canRescue ? (
-            <button
-              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-red-400/40 bg-[#ef4444]/20 px-4 text-sm text-[#ffffff] transition-colors duration-200 ease-in-out hover:bg-[#ef4444]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 md:w-auto"
-              onClick={onRescue}
-              type="button"
-            >
-              <RotateCcw className={`h-4 w-4 ${rescuePending ? 'animate-spin' : ''}`} />
-              {rescuePending ? 'Rescuing...' : 'Rescue'}
-            </button>
+            plan === 'free' ? (
+              <UpgradeGate
+                currentUsage={replayCount ?? 0}
+                feature="replay_limit"
+                plan={plan}
+                variant={rescueVariant}
+              >
+                <button
+                  className="px-3 py-1.5 rounded-lg bg-green-500 text-black text-xs font-bold inline-flex items-center gap-1.5"
+                  disabled={rescuePending}
+                  onClick={onRescue}
+                  type="button"
+                >
+                  {rescuePending ? <Loader2 size={14} className="animate-spin" /> : null}
+                  {rescuePending ? 'Rescuing...' : 'Rescue'}
+                </button>
+              </UpgradeGate>
+            ) : (
+              <button
+                className="px-3 py-1.5 rounded-lg bg-green-500 text-black text-xs font-bold inline-flex items-center gap-1.5"
+                disabled={rescuePending}
+                onClick={onRescue}
+                type="button"
+              >
+                {rescuePending ? <Loader2 size={14} className="animate-spin" /> : null}
+                {rescuePending ? 'Rescuing...' : 'Rescue'}
+              </button>
+            )
           ) : null}
+          {rescueError ? <p className="text-red-400 text-xs">{rescueError}</p> : null}
         </div>
       ) : null}
     </article>

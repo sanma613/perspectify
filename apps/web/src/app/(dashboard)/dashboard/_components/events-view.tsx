@@ -700,6 +700,8 @@ export function EventsView() {
         open={Boolean(detailEventId)}
         event={detailEventId ? displayEvents.find((item) => item.id === detailEventId) ?? null : null}
         onClose={() => setDetailEventId(null)}
+        onReplay={(eventId) => replay(eventId)}
+        plan={me.plan}
         endpointNameFallback={
           detailEventId
             ? endpointNameMap.get(displayEvents.find((item) => item.id === detailEventId)?.endpointId ?? '') ?? null

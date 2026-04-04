@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ArrowDown, ChevronDown, Copy } from 'lucide-react'
+import { ArrowDown, ChevronDown, Copy, Loader2 } from 'lucide-react'
 import type { EventResponse } from '../../../../lib/api-types'
 import { getAccessToken } from '../../../../lib/access-token'
 import { apiFetch } from '../../../../lib/http'
@@ -42,6 +42,8 @@ function EventMobileCard({
   expanded,
   onToggle,
   onRescue,
+  rescueLoading,
+  rescueError,
   onViewPayload,
   plan,
 }: {
@@ -49,10 +51,13 @@ function EventMobileCard({
   expanded: boolean
   onToggle: () => void
   onRescue: () => void
+  rescueLoading: boolean
+  rescueError: string | null
   onViewPayload: () => void
   plan: 'free' | 'starter'
 }) {
   const endpointLabel = event.endpointName ?? event.destinationUrl ?? 'Unknown endpoint'
+  const canRescue = event.status === 'FAILED'
 
   return (
     <article className="rounded-xl border border-white/10 bg-[#111111]">
@@ -77,16 +82,28 @@ function EventMobileCard({
             ))}
           </div>
 
-          <UpgradeGate
-            currentUsage={event.replayCount}
-            feature="replay_limit"
-            plan={plan}
-            variant="bottom-sheet"
-          >
-            <button className="h-11 w-full rounded-lg bg-[#22c55e] text-sm font-medium text-[#031108]" onClick={onRescue} type="button">
-              Rescue
-            </button>
-          </UpgradeGate>
+          {canRescue ? (
+            plan === 'free' ? (
+              <UpgradeGate
+                currentUsage={event.replayCount}
+                feature="replay_limit"
+                plan={plan}
+                variant="bottom-sheet"
+              >
+                <button className="px-3 py-1.5 rounded-lg bg-green-500 text-black text-xs font-bold inline-flex items-center gap-1.5" disabled={rescueLoading} onClick={onRescue} type="button">
+                  {rescueLoading ? <Loader2 size={14} className="animate-spin" /> : null}
+                  {rescueLoading ? 'Rescuing...' : 'Rescue'}
+                </button>
+              </UpgradeGate>
+            ) : (
+              <button className="px-3 py-1.5 rounded-lg bg-green-500 text-black text-xs font-bold inline-flex items-center gap-1.5" disabled={rescueLoading} onClick={onRescue} type="button">
+                {rescueLoading ? <Loader2 size={14} className="animate-spin" /> : null}
+                {rescueLoading ? 'Rescuing...' : 'Rescue'}
+              </button>
+            )
+          ) : null}
+
+          {rescueError ? <p className="text-red-400 text-xs">{rescueError}</p> : null}
 
           <button
             className="h-11 w-full rounded-lg border border-white/10 bg-white/5 text-sm text-white"
@@ -107,6 +124,7 @@ export default function EventsPage() {
 
   const [expanded, setExpanded] = useState<string | null>(null)
   const [rescueLoading, setRescueLoading] = useState<string | null>(null)
+  const [rescueErrors, setRescueErrors] = useState<Record<string, string>>({})
   const [payloadOpen, setPayloadOpen] = useState(false)
   const [payloadEvent, setPayloadEvent] = useState<EventResponse | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -136,14 +154,25 @@ export default function EventsPage() {
   })
 
   async function rescueEvent(eventId: string) {
+    setRescueErrors((current) => {
+      if (!current[eventId]) return current
+      const next = { ...current }
+      delete next[eventId]
+      return next
+    })
     setRescueLoading(eventId)
     try {
       const token = await getAccessToken()
       await apiFetch(`/events/${eventId}/replay`, token, { method: 'POST' })
       patchEvent(eventId, (event) => ({
         ...event,
-        status: 'PENDING',
+        status: 'DELIVERING',
         replayCount: event.replayCount + 1,
+      }))
+    } catch {
+      setRescueErrors((current) => ({
+        ...current,
+        [eventId]: 'Rescue failed. Try again.',
       }))
     } finally {
       setRescueLoading(null)
@@ -331,6 +360,8 @@ export default function EventsPage() {
               onRescue={() => {
                 void rescueEvent(event.id)
               }}
+              rescueError={rescueErrors[event.id] ?? null}
+              rescueLoading={rescueLoading === event.id}
               onToggle={() => setExpanded((current) => (current === event.id ? null : event.id))}
               onViewPayload={() => {
                 setPayloadEvent(event)
@@ -359,6 +390,10 @@ export default function EventsPage() {
               onRescue={event.status === 'FAILED' ? () => void rescueEvent(event.id) : undefined}
               onToggle={() => setExpanded((current) => (current === event.id ? null : event.id))}
               rescuePending={rescueLoading === event.id}
+              rescueError={rescueErrors[event.id] ?? null}
+              plan={me.plan}
+              replayCount={event.replayCount}
+              rescueVariant={isMobile ? 'bottom-sheet' : 'tooltip'}
             >
               <div className="space-y-2 text-sm text-[#a1a1aa]">
                 <p>Stripe ID: {event.stripeId}</p>

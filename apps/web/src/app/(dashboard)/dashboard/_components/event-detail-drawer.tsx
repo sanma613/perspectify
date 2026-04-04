@@ -1,12 +1,14 @@
 'use client'
 
-import { Copy } from 'lucide-react'
+import { AlertCircle, Copy, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getAccessToken } from '../../../../lib/access-token'
 import type { EventDetailResponse, EventResponse } from '../../../../lib/api-types'
 import { apiFetch } from '../../../../lib/http'
 import { useMobile } from '../../../../lib/hooks/use-mobile'
+import { PLANS } from '../../../../lib/plans'
 import { BottomSheet } from './ui/bottom-sheet'
+import { ConfirmModal } from './ui/confirm-modal'
 import { SlideOver } from './ui/slide-over'
 
 type DetailTab = 'overview' | 'payload' | 'response'
@@ -15,6 +17,8 @@ interface EventDetailDrawerProps {
   open: boolean
   event: EventResponse | null
   onClose: () => void
+  onReplay: (eventId: string) => Promise<void>
+  plan: 'free' | 'starter'
   endpointNameFallback?: string | null
   destinationFallback?: string | null
 }
@@ -23,6 +27,8 @@ export function EventDetailDrawer({
   open,
   event,
   onClose,
+  onReplay,
+  plan,
   endpointNameFallback,
   destinationFallback,
 }: EventDetailDrawerProps) {
@@ -31,6 +37,9 @@ export function EventDetailDrawer({
   const [detailCache, setDetailCache] = useState<Record<string, EventDetailResponse>>({})
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
+  const [showReplayConfirm, setShowReplayConfirm] = useState(false)
+  const [replayLoading, setReplayLoading] = useState(false)
+  const [replayError, setReplayError] = useState<string | null>(null)
 
   const selectedId = event?.id ?? null
   const detail = selectedId ? detailCache[selectedId] : undefined
@@ -80,7 +89,23 @@ export function EventDetailDrawer({
     if (!open) return
     setActiveTab('overview')
     setDetailError(null)
+    setShowReplayConfirm(false)
+    setReplayError(null)
   }, [open, selectedId])
+
+  async function handleReplayConfirm() {
+    if (!effectiveEvent || replayLoading) return
+    setReplayLoading(true)
+    setReplayError(null)
+    try {
+      await onReplay(effectiveEvent.id)
+      setShowReplayConfirm(false)
+    } catch (error) {
+      setReplayError(error instanceof Error ? error.message : 'Replay failed. Try again.')
+    } finally {
+      setReplayLoading(false)
+    }
+  }
 
   function openTab(tab: DetailTab) {
     setActiveTab(tab)
@@ -121,6 +146,9 @@ export function EventDetailDrawer({
           attempts={attempts}
           fallbackDeliveries={fallbackDeliveries}
           statusLabel={statusLabel}
+          plan={plan}
+          replayLoading={replayLoading}
+          onReplay={() => setShowReplayConfirm(true)}
         />
       ) : null}
 
@@ -135,21 +163,95 @@ export function EventDetailDrawer({
       {activeTab === 'response' ? (
         <ResponseTab loadingDetail={loadingDetail} latestAttempt={latestAttempt} />
       ) : null}
+
+      {replayError ? <p className="text-red-400 text-xs">{replayError}</p> : null}
     </div>
   )
 
   if (isMobile) {
     return (
-      <BottomSheet onClose={onClose} open={open} title="Event details">
-        {body}
-      </BottomSheet>
+      <>
+        <BottomSheet onClose={onClose} open={open} title="Event details">
+          {body}
+        </BottomSheet>
+
+        <BottomSheet onClose={() => setShowReplayConfirm(false)} open={showReplayConfirm} title="Replay this event?">
+          <p className="text-sm text-zinc-300 leading-relaxed">
+            This event was already delivered to <span className="text-white font-medium">{endpointName}</span>. Replaying it will send the same payload again.
+          </p>
+
+          <div className="bg-amber-500/8 border border-amber-500/25 rounded-lg p-4 mt-4 flex gap-3">
+            <AlertCircle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+            <p className="text-sm text-zinc-300">
+              Your automation may process this event twice, potentially creating duplicate records, charges, or emails.
+            </p>
+          </div>
+
+          {plan === 'free' ? (
+            <div className="bg-red-500/6 border border-red-500/25 rounded-lg p-3 mt-3">
+              <p className="text-sm text-zinc-300">
+                This will use 1 of your {Math.max(0, PLANS.free.maxReplays - effectiveEvent.replayCount)} remaining free replays for this event.
+              </p>
+            </div>
+          ) : null}
+
+          <div className="mt-5 flex gap-2">
+            <button
+              className="h-11 flex-1 rounded-lg bg-zinc-700 text-sm text-white"
+              onClick={() => setShowReplayConfirm(false)}
+              type="button"
+            >
+              Cancel
+            </button>
+            <button
+              className="h-11 flex-1 rounded-lg bg-zinc-600 text-sm font-bold text-white inline-flex items-center justify-center gap-1.5"
+              disabled={replayLoading}
+              onClick={() => {
+                void handleReplayConfirm()
+              }}
+              type="button"
+            >
+              {replayLoading ? <Loader2 size={14} className="animate-spin" /> : null}
+              Replay anyway
+            </button>
+          </div>
+        </BottomSheet>
+      </>
     )
   }
 
   return (
-    <SlideOver onClose={onClose} open={open} title="Event details">
-      {body}
-    </SlideOver>
+    <>
+      <SlideOver onClose={onClose} open={open} title="Event details">
+        {body}
+      </SlideOver>
+
+      <ConfirmModal
+        cancelLabel="Cancel"
+        confirmLabel={replayLoading ? 'Replaying...' : 'Replay anyway'}
+        onClose={() => setShowReplayConfirm(false)}
+        onConfirm={() => {
+          void handleReplayConfirm()
+        }}
+        open={showReplayConfirm}
+        title="Replay this event?"
+        description={`This event was already delivered to ${endpointName}. Replaying it will send the same payload again.`}
+      >
+        <div className="bg-amber-500/8 border border-amber-500/25 rounded-lg p-4 mt-1 flex gap-3">
+          <AlertCircle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+          <p className="text-sm text-zinc-300">
+            Your automation may process this event twice, potentially creating duplicate records, charges, or emails.
+          </p>
+        </div>
+        {plan === 'free' ? (
+          <div className="bg-red-500/6 border border-red-500/25 rounded-lg p-3 mt-3">
+            <p className="text-sm text-zinc-300">
+              This will use 1 of your {Math.max(0, PLANS.free.maxReplays - effectiveEvent.replayCount)} remaining free replays for this event.
+            </p>
+          </div>
+        ) : null}
+      </ConfirmModal>
+    </>
   )
 }
 
@@ -160,6 +262,9 @@ function OverviewTab({
   attempts,
   fallbackDeliveries,
   statusLabel,
+  plan,
+  replayLoading,
+  onReplay,
 }: {
   event: EventResponse
   endpointName: string
@@ -167,10 +272,13 @@ function OverviewTab({
   attempts: EventResponse['eventAttempts']
   fallbackDeliveries: NonNullable<EventResponse['deliveries']>
   statusLabel: string
+  plan: 'free' | 'starter'
+  replayLoading: boolean
+  onReplay: () => void
 }) {
   const payloadBytes = formatBytes(event.payloadSize)
   const responseTime = estimateResponseTime(event.receivedAt, attempts[attempts.length - 1]?.createdAt)
-  const actionLabel = statusLabel === 'Failed' ? 'Rescue' : 'Replay'
+  const isDelivered = statusLabel === 'Delivered'
 
   return (
     <div className="space-y-4">
@@ -178,9 +286,26 @@ function OverviewTab({
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full border border-white/15 bg-black/40 px-2 py-0.5 text-xs">{statusLabel}</span>
           <span className="text-xs text-zinc-500">{new Date(event.receivedAt).toLocaleString()}</span>
-          <span className="rounded-full border border-white/10 bg-black/35 px-2 py-0.5 text-xs text-zinc-300">{actionLabel}</span>
+          <span className="rounded-full border border-white/10 bg-black/35 px-2 py-0.5 text-xs text-zinc-300">replays: {event.replayCount}</span>
         </div>
       </div>
+
+      {isDelivered ? (
+        <div>
+          <button
+            className="px-3 py-1.5 rounded-lg bg-zinc-700 text-white text-xs font-bold inline-flex items-center gap-1.5"
+            disabled={replayLoading}
+            onClick={onReplay}
+            type="button"
+          >
+            {replayLoading ? <Loader2 size={14} className="animate-spin" /> : null}
+            Replay
+          </button>
+          {plan === 'free' ? (
+            <p className="mt-2 text-xs text-zinc-500">Free replays remaining: {Math.max(0, PLANS.free.maxReplays - event.replayCount)}</p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="grid gap-3 rounded-xl border border-white/10 bg-black/25 p-3 text-sm sm:grid-cols-2">
         <MetaItem label="Endpoint" value={endpointName} />

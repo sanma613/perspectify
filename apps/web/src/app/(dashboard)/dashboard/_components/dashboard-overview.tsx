@@ -2,37 +2,32 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, ArrowRight, CircleCheckBig, OctagonAlert, RefreshCcw } from 'lucide-react'
+import { Activity, CircleCheckBig, Loader2, OctagonAlert, RefreshCcw } from 'lucide-react'
 import { getAccessToken } from '../../../../lib/access-token'
-import { derivePlanCapabilities, getReplayUiState } from '../../../../lib/capabilities'
+import { derivePlanCapabilities } from '../../../../lib/capabilities'
 import { apiFetch } from '../../../../lib/http'
 import { usePaginatedEvents } from '../../../../lib/use-paginated-events'
 import { useDashboardData } from '../../../../lib/use-dashboard-data'
+import { useMobile } from '../../../../lib/hooks/use-mobile'
 import type { EventResponse } from '../../../../lib/api-types'
-import { ActionModal } from './action-modal'
 import { EventDetailDrawer } from './event-detail-drawer'
 import { FlashMessage } from './flash-message'
 import { OnboardingFlow } from './onboarding-flow'
 import { CopyToClipboard } from './copyToClipboard'
-
-type OverviewModal =
-  | {
-      type: 'blocked' | 'confirm-delivered' | 'bulk-paywall'
-      eventId: string
-      title: string
-      message: string
-    }
-  | null
+import { BottomSheet } from './ui/bottom-sheet'
+import { ConfirmModal } from './ui/confirm-modal'
+import { UpgradeGate } from './ui/upgrade-gate'
 
 export function DashboardOverview() {
+  const isMobile = useMobile()
   const { me, endpoints, loading, error } = useDashboardData()
   const [displayEvents, setDisplayEvents] = useState<EventResponse[]>([])
   const [pendingId, setPendingId] = useState<string | null>(null)
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionSuccess, setActionSuccess] = useState<string | null>(null)
   const [isRescueAllWorking, setIsRescueAllWorking] = useState(false)
-  const [modal, setModal] = useState<OverviewModal>(null)
-  const [hoverHintEventId, setHoverHintEventId] = useState<string | null>(null)
+  const [showRescueAllModal, setShowRescueAllModal] = useState(false)
   const [detailEventId, setDetailEventId] = useState<string | null>(null)
   const [attentionOnly, setAttentionOnly] = useState(false)
   const [selectedEndpointIds, setSelectedEndpointIds] = useState<string[]>([])
@@ -40,8 +35,6 @@ export function DashboardOverview() {
   const [isFilterTransitioning, setIsFilterTransitioning] = useState(false)
   const endpointFilterRef = useRef<HTMLDivElement | null>(null)
   const loadMoreRef = useRef<HTMLLIElement | null>(null)
-  const hoverHintTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const hoverHintDelayMs = 300
 
   const {
     events,
@@ -194,49 +187,52 @@ export function DashboardOverview() {
       })
       setActionSuccess('Event queued successfully.')
       patchEvent(eventId, {
-        status: 'PENDING',
+        status: 'DELIVERING',
         lastAttemptStatus: null,
         lastError: null,
       })
+      setRowErrors((current) => {
+        if (!current[eventId]) return current
+        const next = { ...current }
+        delete next[eventId]
+        return next
+      })
     } catch (replayError) {
-      setActionError(replayError instanceof Error ? replayError.message : 'Could not replay event.')
+      setRowErrors((current) => ({
+        ...current,
+        [eventId]: 'Rescue failed. Try again.',
+      }))
+      throw replayError instanceof Error ? replayError : new Error('Replay failed. Try again.')
     } finally {
       setPendingId(null)
     }
   }
 
   async function rescueAllFailed() {
-    if (me.plan === 'free') {
-      setModal({
-        type: 'bulk-paywall',
-        eventId: 'bulk',
-        title: 'Rescue All is a paid feature',
-        message: 'Rescue All is available on Starter. Upgrade to fix all failed events with one click.',
-      })
-      return
-    }
-
     setActionError(null)
     setActionSuccess(null)
     setIsRescueAllWorking(true)
 
     try {
       const token = await getAccessToken()
-      const result = await apiFetch<{ replayed: number }>('/events/replay-all', token, {
+      const result = await apiFetch<{ rescued?: number; replayed?: number }>('/events/rescue-all', token, {
         method: 'POST',
       })
+      const rescuedCount = result.rescued ?? result.replayed ?? 0
       setActionSuccess(
-        result.replayed > 0
-          ? `${result.replayed} failed event${result.replayed === 1 ? '' : 's'} sent to rescue queue.`
+        rescuedCount > 0
+          ? `${rescuedCount} failed event${rescuedCount === 1 ? '' : 's'} sent to rescue queue.`
           : 'No failed events available for Rescue All.'
       )
       for (const failedEvent of filteredEvents.filter((event) => resolveVisualState(event) === 'FAILED')) {
         patchEvent(failedEvent.id, {
-          status: 'PENDING',
+          status: 'DELIVERING',
           lastAttemptStatus: null,
           lastError: null,
+          replayCount: failedEvent.replayCount + 1,
         })
       }
+      setShowRescueAllModal(false)
     } catch (rescueError) {
       setActionError(rescueError instanceof Error ? rescueError.message : 'Could not run Rescue All.')
     } finally {
@@ -260,25 +256,26 @@ export function DashboardOverview() {
           <Activity className="h-7 w-7 text-emerald-300" />
           Events
         </h2>
-        <div className="group relative flex w-40 flex-col items-end gap-2">
+        {me.plan === 'free' ? (
+          <UpgradeGate
+            feature="rescue_all"
+            plan={me.plan}
+            variant={isMobile ? 'bottom-sheet' : 'tooltip'}
+          >
+            <button className="text-sm font-bold px-4 py-2 rounded-xl bg-green-500 text-black" type="button">
+              Rescue all ({filteredFailedEvents})
+            </button>
+          </UpgradeGate>
+        ) : (
           <button
-            className={`w-full rounded-lg px-3 py-1.5 text-center text-sm font-medium transition ${me.plan === 'free' ? 'cursor-not-allowed border border-white/15 bg-black/35 text-zinc-500 opacity-60 hover:bg-black/45' : 'bg-red-500 text-red-50 hover:bg-red-400'}`}
-            onClick={rescueAllFailed}
+            className="text-sm font-bold px-4 py-2 rounded-xl bg-green-500 text-black inline-flex items-center gap-1.5"
+            onClick={() => setShowRescueAllModal(true)}
             type="button"
           >
-            <span className="inline-flex w-full items-center justify-center gap-1.5">
-              <RefreshCcw className={`h-3.5 w-3.5 ${isRescueAllWorking ? 'animate-spin' : ''}`} />
-              {isRescueAllWorking ? 'Rescuing...' : 'Rescue All'}
-            </span>
+            <RefreshCcw className={`h-3.5 w-3.5 ${isRescueAllWorking ? 'animate-spin' : ''}`} />
+            Rescue all ({filteredFailedEvents})
           </button>
-          {me.plan === 'free' ? (
-            <p
-              className="pointer-events-none absolute right-0 top-full mt-1 w-max whitespace-nowrap text-right text-xs leading-tight text-zinc-400 transition-colors duration-200 group-hover:text-zinc-200"
-            >
-              Rescue All is a paid feature. Upgrade to rescue all failures in one click.
-            </p>
-          ) : null}
-        </div>
+        )}
       </header>
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-2 text-sm text-zinc-400">
@@ -393,18 +390,9 @@ export function DashboardOverview() {
             </li>
           ) : null}
           {filteredEvents.map((event) => {
-            const replayUi = getReplayUiState({
-              plan: me.plan,
-              limits: me.limits,
-              replayCount: event.replayCount,
-              status: event.status,
-              lastAttemptStatus: event.lastAttemptStatus,
-            })
-
             const visualState = resolveVisualState(event)
             const isFailed = visualState === 'FAILED'
             const isDelivering = visualState === 'IN_PROGRESS'
-            const isBlocked = !replayUi.allowed
             const dotClass = isFailed
               ? 'bg-red-500'
               : isDelivering
@@ -420,40 +408,6 @@ export function DashboardOverview() {
             ]
               .filter(Boolean)
               .join(' · ')
-
-            function handleActionClick() {
-              if (isBlocked) {
-                const message =
-                  replayUi.code === 'credits_exhausted'
-                    ? `You have used all ${me.limits.maxReplays} replays for this event.`
-                    : replayUi.reason ?? 'This action is currently unavailable.'
-
-                setModal({
-                  type: 'blocked',
-                  eventId: event.id,
-                  title: 'Action blocked',
-                  message,
-                })
-                return
-              }
-
-              if (visualState === 'DELIVERED') {
-                const warning =
-                  me.plan === 'free'
-                    ? `This event was already delivered successfully. Replaying it can create duplicate data in your destination. It will consume 1 of your ${me.limits.maxReplays} event replays. Continue?`
-                    : 'This event was already delivered successfully. Replaying it can create duplicate data in your destination. Continue?'
-
-                setModal({
-                  type: 'confirm-delivered',
-                  eventId: event.id,
-                  title: 'Confirm Replay Event',
-                  message: warning,
-                })
-                return
-              }
-
-              void replay(event.id)
-            }
 
             return (
               <li
@@ -492,48 +446,51 @@ export function DashboardOverview() {
                     >
                       View details
                     </button>
+                    {rowErrors[event.id] ? <p className="mt-1 text-red-400 text-xs">{rowErrors[event.id]}</p> : null}
                   </div>
                 </div>
 
                 <div className="relative flex w-40 shrink-0 flex-col items-end gap-1">
-                  <button
-                    aria-disabled={isBlocked || pendingId === event.id}
-                    className={`w-full rounded-lg px-3 py-1.5 text-center text-sm font-medium transition ${isBlocked ? 'cursor-not-allowed border border-white/15 bg-black/30 text-zinc-500 opacity-60 hover:bg-black/40' : replayUi.actionLabel === 'Rescue Event' ? 'bg-red-500 text-red-50 hover:bg-red-400' : 'bg-emerald-500 text-emerald-950 hover:bg-emerald-400'} ${pendingId === event.id ? 'opacity-70' : ''}`}
-                    onClick={(eventClick) => {
-                      eventClick.stopPropagation()
-                      handleActionClick()
-                    }}
-                    onMouseEnter={() => {
-                      if (!isBlocked) return
-                      if (hoverHintTimeout.current) clearTimeout(hoverHintTimeout.current)
-                      hoverHintTimeout.current = setTimeout(() => {
-                        setHoverHintEventId(event.id)
-                      }, hoverHintDelayMs)
-                    }}
-                    onMouseLeave={() => {
-                      if (hoverHintTimeout.current) clearTimeout(hoverHintTimeout.current)
-                      hoverHintTimeout.current = null
-                      setHoverHintEventId((value) => (value === event.id ? null : value))
-                    }}
-                    type="button"
-                  >
-                    <span className="inline-flex w-full items-center justify-center gap-1.5">
-                      <RefreshCcw className="h-3.5 w-3.5" />
-                      {pendingId === event.id
-                        ? replayUi.actionLabel === 'Rescue Event'
-                          ? 'Rescuing...'
-                          : 'Replaying...'
-                        : replayUi.actionLabel}
+                  {isFailed ? (
+                    me.plan === 'free' ? (
+                      <UpgradeGate
+                        currentUsage={event.replayCount}
+                        feature="replay_limit"
+                        plan={me.plan}
+                        variant={isMobile ? 'bottom-sheet' : 'tooltip'}
+                      >
+                        <button
+                          className="px-3 py-1.5 rounded-lg bg-green-500 text-black text-xs font-bold inline-flex items-center gap-1.5"
+                          disabled={pendingId === event.id}
+                          onClick={(eventClick) => {
+                            eventClick.stopPropagation()
+                            void replay(event.id)
+                          }}
+                          type="button"
+                        >
+                          {pendingId === event.id ? <Loader2 className="animate-spin" size={14} /> : null}
+                          {pendingId === event.id ? 'Rescuing...' : 'Rescue'}
+                        </button>
+                      </UpgradeGate>
+                    ) : (
+                      <button
+                        className="px-3 py-1.5 rounded-lg bg-green-500 text-black text-xs font-bold inline-flex items-center gap-1.5"
+                        disabled={pendingId === event.id}
+                        onClick={(eventClick) => {
+                          eventClick.stopPropagation()
+                          void replay(event.id)
+                        }}
+                        type="button"
+                      >
+                        {pendingId === event.id ? <Loader2 className="animate-spin" size={14} /> : null}
+                        {pendingId === event.id ? 'Rescuing...' : 'Rescue'}
+                      </button>
+                    )
+                  ) : (
+                    <span className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-zinc-400">
+                      {readableStatus(visualState)}
                     </span>
-                  </button>
-                  {replayUi.reason ? (
-                    <span
-                      aria-hidden={!(isBlocked && hoverHintEventId === event.id)}
-                      className={`pointer-events-none absolute right-0 top-full mt-1 w-max whitespace-nowrap text-right text-xs leading-tight text-zinc-500 transition-opacity duration-200 ${isBlocked && hoverHintEventId === event.id ? 'opacity-100' : 'opacity-0'}`}
-                    >
-                      {replayUi.reason}
-                    </span>
-                  ) : null}
+                  )}
                 </div>
               </li>
             )
@@ -591,28 +548,52 @@ export function DashboardOverview() {
         </Link>
       </div>
 
-      <ActionModal
-        cancelLabel={modal?.type === 'blocked' || modal?.type === 'bulk-paywall' ? 'Upgrade Plan' : undefined}
-        confirmLabel="Continue"
-        onClose={() => setModal(null)}
-        onConfirm={
-          modal?.type === 'confirm-delivered'
-            ? () => {
-                const eventId = modal.eventId
-                setModal(null)
-                void replay(eventId)
-              }
-            : undefined
-        }
-        open={Boolean(modal)}
-        title={modal?.title ?? ''}
-        message={modal?.message ?? ''}
-      />
+      {isMobile ? (
+        <BottomSheet onClose={() => setShowRescueAllModal(false)} open={showRescueAllModal} title="Rescue all failed events?">
+          <p className="text-sm text-zinc-300 leading-relaxed">
+            This will re-queue {filteredFailedEvents} failed event{filteredFailedEvents === 1 ? '' : 's'} for delivery to your endpoints.
+          </p>
+          <div className="mt-5 flex gap-2">
+            <button
+              className="h-11 flex-1 rounded-lg bg-zinc-700 text-sm text-white"
+              onClick={() => setShowRescueAllModal(false)}
+              type="button"
+            >
+              Cancel
+            </button>
+            <button
+              className="h-11 flex-1 rounded-lg bg-green-500 text-sm font-bold text-black inline-flex items-center justify-center gap-1.5"
+              disabled={isRescueAllWorking}
+              onClick={() => {
+                void rescueAllFailed()
+              }}
+              type="button"
+            >
+              {isRescueAllWorking ? <Loader2 className="animate-spin" size={14} /> : null}
+              Rescue all
+            </button>
+          </div>
+        </BottomSheet>
+      ) : (
+        <ConfirmModal
+          cancelLabel="Cancel"
+          confirmLabel={isRescueAllWorking ? 'Rescuing...' : 'Rescue all'}
+          onClose={() => setShowRescueAllModal(false)}
+          onConfirm={() => {
+            void rescueAllFailed()
+          }}
+          open={showRescueAllModal}
+          title="Rescue all failed events?"
+          description={`This will re-queue ${filteredFailedEvents} failed event${filteredFailedEvents === 1 ? '' : 's'} for delivery to your endpoints.`}
+        />
+      )}
 
       <EventDetailDrawer
         open={Boolean(detailEventId)}
         event={detailEventId ? displayEvents.find((item) => item.id === detailEventId) ?? null : null}
         onClose={() => setDetailEventId(null)}
+        onReplay={(eventId) => replay(eventId)}
+        plan={me.plan}
         endpointNameFallback={
           detailEventId
             ? endpointNameMap.get(displayEvents.find((item) => item.id === detailEventId)?.endpointId ?? '') ?? null

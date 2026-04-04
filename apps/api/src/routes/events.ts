@@ -5,6 +5,77 @@ import { and, asc, count, desc, eq, inArray, lt, or, sql } from 'drizzle-orm'
 
 export const eventsRoutes = new Hono()
 
+type BulkRescueResult =
+  | { rescued: number }
+  | {
+      errorBody: { error: string; message?: string }
+      errorStatus: 403 | 404
+    }
+
+async function bulkRescueAll(userId: string): Promise<BulkRescueResult> {
+  const [user] = await db
+    .select({ plan: users.plan })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+
+  if (!user) {
+    return {
+      errorBody: { error: 'User not found' },
+      errorStatus: 404,
+    }
+  }
+
+  const limits = getPlanLimits(user.plan)
+
+  if (!limits.replayEnabled || user.plan === 'free') {
+    return {
+      errorBody: {
+        error: 'upgrade_required_for_bulk_rescue',
+        message: 'Bulk Rescue is available on Starter.',
+      },
+      errorStatus: 403,
+    }
+  }
+
+  const userEndpoints = await db
+    .select({ id: endpoints.id })
+    .from(endpoints)
+    .where(eq(endpoints.userId, userId))
+
+  if (userEndpoints.length === 0) {
+    return { rescued: 0 }
+  }
+
+  const endpointIds = userEndpoints.map((endpoint) => endpoint.id)
+  const failedEvents = await db.query.events.findMany({
+    where: and(inArray(events.endpointId, endpointIds), eq(events.status, 'FAILED')),
+    orderBy: desc(events.receivedAt),
+    limit: isUnlimited(limits.maxEventsPerMonth) ? undefined : limits.maxEventsPerMonth,
+    columns: {
+      id: true,
+      replayCount: true,
+    },
+  })
+
+  let rescued = 0
+  for (const row of failedEvents) {
+    await enqueueDelivery(row.id, user.plan)
+    await db
+      .update(events)
+      .set({
+        status: 'PENDING',
+        lastError: null,
+        lastAttemptStatus: null,
+        replayCount: row.replayCount + 1,
+      })
+      .where(eq(events.id, row.id))
+    rescued += 1
+  }
+
+  return { rescued }
+}
+
 // GET /events
 eventsRoutes.get('/', async (c) => {
   const userId = c.get('user').id
@@ -288,59 +359,22 @@ eventsRoutes.post('/:eventId/replay', async (c) => {
 eventsRoutes.post('/replay-all', async (c) => {
   const userId = c.get('user').id
 
-  const [user] = await db
-    .select({ plan: users.plan })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1)
-
-  if (!user) return c.json({ error: 'User not found' }, 404)
-  const limits = getPlanLimits(user.plan)
-
-  if (!limits.replayEnabled || user.plan === 'free') {
-    return c.json(
-      {
-        error: 'upgrade_required_for_bulk_rescue',
-        message: 'Bulk Rescue is available on Starter.',
-      },
-      403
-    )
+  const result = await bulkRescueAll(userId)
+  if ('errorBody' in result) {
+    return c.json(result.errorBody, result.errorStatus)
   }
 
-  const userEndpoints = await db
-    .select({ id: endpoints.id })
-    .from(endpoints)
-    .where(eq(endpoints.userId, userId))
+  return c.json({ replayed: result.rescued })
+})
 
-  if (userEndpoints.length === 0) {
-    return c.json({ replayed: 0 })
+// POST /events/rescue-all — alias for bulk rescue
+eventsRoutes.post('/rescue-all', async (c) => {
+  const userId = c.get('user').id
+  const result = await bulkRescueAll(userId)
+
+  if ('errorBody' in result) {
+    return c.json(result.errorBody, result.errorStatus)
   }
 
-  const endpointIds = userEndpoints.map((endpoint) => endpoint.id)
-  const failedEvents = await db.query.events.findMany({
-    where: and(inArray(events.endpointId, endpointIds), eq(events.status, 'FAILED')),
-    orderBy: desc(events.receivedAt),
-    limit: isUnlimited(limits.maxEventsPerMonth) ? undefined : limits.maxEventsPerMonth,
-    columns: {
-      id: true,
-      replayCount: true,
-    },
-  })
-
-  let replayed = 0
-  for (const row of failedEvents) {
-    await enqueueDelivery(row.id, user.plan)
-    await db
-      .update(events)
-      .set({
-        status: 'PENDING',
-        lastError: null,
-        lastAttemptStatus: null,
-        replayCount: row.replayCount + 1,
-      })
-      .where(eq(events.id, row.id))
-    replayed += 1
-  }
-
-  return c.json({ replayed })
+  return c.json({ rescued: result.rescued })
 })

@@ -2,8 +2,10 @@
 
 import { useRouter } from 'next/navigation'
 import { AlertCircle, Lock, X } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { PlanId } from '../../../../../lib/capabilities'
+import { PLANS } from '../../../../../lib/plans'
+import { useMobile } from '../../../../../lib/hooks/use-mobile'
 import { BottomSheet } from './bottom-sheet'
 
 export type UpgradeTrigger =
@@ -212,12 +214,61 @@ export function UpgradeCTA({
 }
 
 export function PlanUsageBar({ used, limit, plan }: { used: number; limit: number; plan: PlanId }) {
+  const router = useRouter()
+  const isMobile = useMobile()
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+
+  const planOrder = useMemo(() => Object.keys(PLANS) as PlanId[], [])
+  const currentIndex = planOrder.indexOf(plan)
+  const nextPlanId = currentIndex >= 0 && currentIndex < planOrder.length - 1 ? planOrder[currentIndex + 1] : null
+
+  const currentLimits = PLANS[plan]
+  const nextLimits = nextPlanId ? PLANS[nextPlanId] : null
+
+  const improvements = nextLimits
+    ? [
+        currentLimits.maxEventsPerMonth !== nextLimits.maxEventsPerMonth && {
+          label: 'Events per month',
+          current: currentLimits.maxEventsPerMonth === -1 ? 'Unlimited' : currentLimits.maxEventsPerMonth.toLocaleString(),
+          next: nextLimits.maxEventsPerMonth === -1 ? 'Unlimited' : nextLimits.maxEventsPerMonth.toLocaleString(),
+        },
+        currentLimits.retentionDays !== nextLimits.retentionDays && {
+          label: 'History retention',
+          current: `${currentLimits.retentionDays} days`,
+          next: `${nextLimits.retentionDays} days`,
+        },
+        currentLimits.maxReplays !== nextLimits.maxReplays && {
+          label: 'Replays per event',
+          current: currentLimits.maxReplays === -1 ? 'Unlimited' : String(currentLimits.maxReplays),
+          next: nextLimits.maxReplays === -1 ? 'Unlimited' : String(nextLimits.maxReplays),
+        },
+        !currentLimits.alertsEnabled && nextLimits.alertsEnabled && {
+          label: 'Failure alerts',
+          current: 'Not included',
+          next: 'Email alerts',
+        },
+        !currentLimits.retentionAlerts && nextLimits.retentionAlerts && {
+          label: 'Retention warnings',
+          current: 'Not included',
+          next: '2 days before deletion',
+        },
+      ].filter(Boolean) as Array<{ label: string; current: string; next: string }>
+    : []
+
   const percent = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0
   const isWarn = percent >= 80 && percent < 100
   const isLimit = percent >= 100
 
   return (
-    <div className="rounded-xl border border-white/10 bg-[#111111] p-4">
+    <>
+      <div
+        className={`rounded-xl border border-white/10 bg-[#111111] p-4 ${nextPlanId ? 'cursor-pointer' : 'cursor-default'}`}
+        onClick={() => {
+          if (!nextPlanId) return
+          setShowUpgradeModal(true)
+        }}
+        title={nextPlanId ? undefined : "You're on our best plan ✓"}
+      >
       <div className="flex items-center justify-between">
         <p className="text-sm text-white">Plan: {plan === 'starter' ? 'Starter' : 'Free'}</p>
         {isWarn ? <AlertCircle className="h-4 w-4 text-[#f59e0b]" /> : null}
@@ -234,6 +285,84 @@ export function PlanUsageBar({ used, limit, plan }: { used: number; limit: numbe
           isLimit ? 'bg-[#ef4444] text-white' : 'bg-[#22c55e] text-[#031108]'
         }`} />
       ) : null}
-    </div>
+      </div>
+
+      {nextPlanId && nextLimits ? (
+        isMobile ? (
+          <BottomSheet onClose={() => setShowUpgradeModal(false)} open={showUpgradeModal} title={`Upgrade to ${nextPlanId === 'starter' ? 'Starter' : nextPlanId}`}>
+            <div className="space-y-1">
+              {improvements.map((item) => (
+                <div key={item.label} className="flex items-center justify-between py-3 border-b border-white/6">
+                  <span className="text-sm text-zinc-400">{item.label}</span>
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="text-zinc-600 line-through">{item.current}</span>
+                    <span className="text-green-400 font-medium">{item.next}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-3xl font-bold text-white mt-6" style={{ fontFamily: 'var(--font-display)' }}>
+              ${nextLimits.priceMonthly}
+              <span className="text-sm text-zinc-500 font-normal">/mo</span>
+            </p>
+
+            <button
+              onClick={() => {
+                router.push('/dashboard/settings#upgrade')
+              }}
+              className="w-full py-3 rounded-xl bg-green-500 text-black font-bold mt-4"
+              style={{ fontFamily: 'var(--font-display)' }}
+              type="button"
+            >
+              Upgrade to {nextPlanId === 'starter' ? 'Starter' : nextPlanId} - ${nextLimits.priceMonthly}/mo
+            </button>
+          </BottomSheet>
+        ) : (
+          <>
+            <button
+              aria-hidden={!showUpgradeModal}
+              aria-label="Close upgrade modal"
+              className={`fixed inset-0 z-40 bg-black/70 transition-opacity duration-200 ${showUpgradeModal ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+              onClick={() => setShowUpgradeModal(false)}
+              type="button"
+            />
+            <section
+              aria-hidden={!showUpgradeModal}
+              className={`fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 rounded-xl border border-white/10 bg-[#111111] p-6 transition-all duration-200 ${showUpgradeModal ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+            >
+              <h2 className="font-display text-xl text-white">Upgrade to {nextPlanId === 'starter' ? 'Starter' : nextPlanId}</h2>
+              <div className="mt-4 space-y-1">
+                {improvements.map((item) => (
+                  <div key={item.label} className="flex items-center justify-between py-3 border-b border-white/6">
+                    <span className="text-sm text-zinc-400">{item.label}</span>
+                    <div className="flex items-center gap-3 text-sm">
+                      <span className="text-zinc-600 line-through">{item.current}</span>
+                      <span className="text-green-400 font-medium">{item.next}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-3xl font-bold text-white mt-6" style={{ fontFamily: 'var(--font-display)' }}>
+                ${nextLimits.priceMonthly}
+                <span className="text-sm text-zinc-500 font-normal">/mo</span>
+              </p>
+
+              <button
+                onClick={() => {
+                  router.push('/dashboard/settings#upgrade')
+                }}
+                className="w-full py-3 rounded-xl bg-green-500 text-black font-bold mt-4"
+                style={{ fontFamily: 'var(--font-display)' }}
+                type="button"
+              >
+                Upgrade to {nextPlanId === 'starter' ? 'Starter' : nextPlanId} - ${nextLimits.priceMonthly}/mo
+              </button>
+            </section>
+          </>
+        )
+      ) : null}
+    </>
   )
 }

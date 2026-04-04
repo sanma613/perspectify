@@ -25,6 +25,7 @@ import {
 import { z } from 'zod'
 import { getAccessToken } from '../../lib/access-token'
 import { handleEnterAdvance } from '../../lib/forms/enter-navigation'
+import { usePasswordVisibility } from '../../hooks/use-password-visibility'
 import { useMobile } from '../../lib/hooks/use-mobile'
 import { ApiError, apiFetch, getApiBaseUrl } from '../../lib/http'
 
@@ -87,7 +88,7 @@ export function OnboardingFlowPage() {
   const [stepTwoError, setStepTwoError] = useState<string | null>(null)
 
   const [secret, setSecret] = useState('')
-  const [secretVisible, setSecretVisible] = useState(false)
+  const secretVisibility = usePasswordVisibility()
   const [stepThreeError, setStepThreeError] = useState<string | null>(null)
   const [isPreparingEndpoint, setIsPreparingEndpoint] = useState(false)
   const [isCompletingSetup, setIsCompletingSetup] = useState(false)
@@ -615,9 +616,10 @@ export function OnboardingFlowPage() {
                 onCompleteSetup={handleCompleteSetup}
                 onEnterSubmit={handleStepThreeKeyDown}
                 secret={secret}
-                secretVisible={secretVisible}
+                secretInputType={secretVisibility.inputType}
+                secretVisible={secretVisibility.visible}
                 setSecret={setSecret}
-                setSecretVisible={setSecretVisible}
+                toggleSecretVisible={secretVisibility.toggle}
                 stepThreeError={stepThreeError}
                 webhookUrl={webhookUrl}
               />
@@ -1067,9 +1069,10 @@ function StepThree({
   onCompleteSetup,
   onEnterSubmit,
   secret,
+  secretInputType,
   secretVisible,
   setSecret,
-  setSecretVisible,
+  toggleSecretVisible,
   stepThreeError,
   webhookUrl,
 }: {
@@ -1077,9 +1080,10 @@ function StepThree({
   onCompleteSetup: () => Promise<void>
   onEnterSubmit: (event: KeyboardEvent<HTMLElement>) => void
   secret: string
+  secretInputType: 'text' | 'password'
   secretVisible: boolean
   setSecret: (value: string) => void
-  setSecretVisible: (value: boolean) => void
+  toggleSecretVisible: () => void
   stepThreeError: string | null
   webhookUrl: string
 }) {
@@ -1183,12 +1187,13 @@ function StepThree({
             pattern="whsec_.*"
             placeholder="whsec_..."
             required
-            type={secretVisible ? 'text' : 'password'}
+            type={secretInputType}
             value={secret}
           />
           <button
+            aria-label={secretVisible ? 'Hide' : 'Show'}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
-            onClick={() => setSecretVisible(!secretVisible)}
+            onClick={toggleSecretVisible}
             tabIndex={-1}
             type="button"
           >

@@ -1,15 +1,19 @@
 'use client'
 
 import { useState } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../../../lib/supabase/client'
 import { handleEnterAdvance } from '../../../lib/forms/enter-navigation'
 import { resetPasswordSchema } from '../../../lib/validation/auth'
-import { Field, PrimaryButton } from '../_components/form-primitives'
+import { usePasswordVisibility } from '../../../hooks/use-password-visibility'
+import { PrimaryButton } from '../_components/form-primitives'
 
 export function ResetPasswordForm() {
   const router = useRouter()
   const supabase = createClient()
+  const passwordVisibility = usePasswordVisibility()
+  const confirmVisibility = usePasswordVisibility()
 
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -57,26 +61,55 @@ export function ResetPasswordForm() {
 
   return (
     <form className="space-y-4" onKeyDown={handleEnterAdvance} onSubmit={onSubmit}>
-      <Field
-        autoComplete="new-password"
-        label="New password"
-        name="password"
-        onChange={(event) => setPassword(event.target.value)}
-        required
-        type="password"
-        value={password}
-        error={fieldErrors.password}
-      />
-      <Field
-        autoComplete="new-password"
-        label="Confirm password"
-        name="confirmPassword"
-        onChange={(event) => setConfirmPassword(event.target.value)}
-        required
-        type="password"
-        value={confirmPassword}
-        error={fieldErrors.confirmPassword}
-      />
+      <label className="block space-y-2 text-base">
+        <span className="font-display text-[11px] uppercase tracking-[0.14em] text-[#a1a1aa]">New password</span>
+        <div className="relative">
+          <input
+            autoComplete="new-password"
+            className="h-11 w-full rounded-lg border border-white/10 bg-[#1a1a1a] px-3 pr-10 text-base text-white outline-none transition-colors duration-200 ease-in-out placeholder:text-[#52525b] hover:bg-[#202020] focus-visible:ring-2 focus-visible:ring-green-500"
+            name="password"
+            onChange={(event) => setPassword(event.target.value)}
+            required
+            type={passwordVisibility.inputType}
+            value={password}
+          />
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={passwordVisibility.toggle}
+            aria-label={passwordVisibility.visible ? 'Hide' : 'Show'}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            {passwordVisibility.visible ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+        {fieldErrors.password ? <span className="text-sm text-[#ef4444]">{fieldErrors.password}</span> : null}
+      </label>
+
+      <label className="block space-y-2 text-base">
+        <span className="font-display text-[11px] uppercase tracking-[0.14em] text-[#a1a1aa]">Confirm password</span>
+        <div className="relative">
+          <input
+            autoComplete="new-password"
+            className="h-11 w-full rounded-lg border border-white/10 bg-[#1a1a1a] px-3 pr-10 text-base text-white outline-none transition-colors duration-200 ease-in-out placeholder:text-[#52525b] hover:bg-[#202020] focus-visible:ring-2 focus-visible:ring-green-500"
+            name="confirmPassword"
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            required
+            type={confirmVisibility.inputType}
+            value={confirmPassword}
+          />
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={confirmVisibility.toggle}
+            aria-label={confirmVisibility.visible ? 'Hide' : 'Show'}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            {confirmVisibility.visible ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+        {fieldErrors.confirmPassword ? <span className="text-sm text-[#ef4444]">{fieldErrors.confirmPassword}</span> : null}
+      </label>
 
       {error ? <p className="text-sm text-[#ef4444]">{error}</p> : null}
       {message ? <p className="text-sm text-green-300">{message}</p> : null}
