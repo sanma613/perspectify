@@ -268,7 +268,7 @@ async function deliverEvent(eventId: string) {
 
   const planLimits = getPlanLimits(owner?.plan ?? 'free')
   const maxRetries = planLimits.maxRetries
-  const requestTimeoutMs = planLimits.maxRetries * 2_000
+  const requestTimeoutMs = 10_000
 
   // Marcar como en proceso
   await db
@@ -277,29 +277,46 @@ async function deliverEvent(eventId: string) {
     .where(eq(events.id, eventId))
 
   const attemptNumber = event.attempts + 1
+  const attemptStartedAt = new Date()
+  const requestHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Perspectify-Event': event.type,
+    'X-Perspectify-Event-Id': event.id,
+    'X-Perspectify-Delivery': crypto.randomUUID(),
+    'X-Perspectify-Timestamp': attemptStartedAt.toISOString(),
+  }
+
+  let responseReceivedAt: Date | null = null
+  let responseHeaders: Record<string, string> | null = null
+  let responseBody: string | null = null
+  let statusCode: number | null = null
+  let failureCategory: string | null = null
+  let durationMs: number | null = null
+  let errorMessage: string | null = null
 
   try {
     const res = await fetch(event.endpointDestination, {
       method:  'POST',
-      headers: {
-        'Content-Type':           'application/json',
-        'X-Perspectify-Event':    event.type,
-        'X-Perspectify-Event-Id': event.id,
-      },
+      headers: requestHeaders,
       body:   JSON.stringify(event.payload),
       signal: AbortSignal.timeout(requestTimeoutMs),
     })
 
-    const responseBody = await res.text()
+    responseReceivedAt = new Date()
+    durationMs = responseReceivedAt.getTime() - attemptStartedAt.getTime()
+    statusCode = res.status
+    responseHeaders = {}
+    res.headers.forEach((value, key) => {
+      responseHeaders![key] = value
+    })
+
+    const rawBody = await res.text()
+    responseBody = rawBody.length > 10_240 ? `${rawBody.substring(0, 10_240)}... [truncated]` : rawBody
 
     if (!res.ok) {
-      const error = new Error(`Destination returned ${res.status}`) as Error & {
-        status?: number
-        responseBody?: string
-      }
-      error.status = res.status
-      error.responseBody = responseBody
-      throw error
+      failureCategory =
+        res.status >= 500 ? 'http_5xx' : res.status >= 400 ? 'http_4xx' : res.status >= 300 ? 'http_3xx' : 'unknown'
+      throw new Error(`Destination returned ${res.status}`)
     }
 
     // Éxito — marcar entregado y registrar delivery
@@ -313,8 +330,15 @@ async function deliverEvent(eventId: string) {
     await db.insert(eventAttempts).values({
       eventId,
       attempt: attemptNumber,
-      status: res.status,
-      responseBody: responseBody || null,
+      status: statusCode,
+      attemptStartedAt,
+      responseReceivedAt,
+      durationMs,
+      requestHeaders,
+      responseHeaders,
+      responseBody,
+      failureCategory: null,
+      error: null,
     })
 
     await db
@@ -323,34 +347,63 @@ async function deliverEvent(eventId: string) {
       .where(eq(events.id, eventId))
 
   } catch (err) {
-    const error = err instanceof Error ? err.message : 'Unknown error'
-    const status = typeof (err as { status?: number }).status === 'number' ? Number((err as { status?: number }).status) : 520
-    const responseBody =
-      typeof (err as { responseBody?: string }).responseBody === 'string'
-        ? (err as { responseBody?: string }).responseBody ?? null
-        : null
+    responseReceivedAt = responseReceivedAt ?? new Date()
+    durationMs = durationMs ?? (responseReceivedAt.getTime() - attemptStartedAt.getTime())
+
+    if (err instanceof Error) {
+      errorMessage = err.message
+      const messageLower = err.message.toLowerCase()
+      const nameLower = err.name.toLowerCase()
+
+      if (nameLower.includes('timeout') || messageLower.includes('timeout') || messageLower.includes('timed out')) {
+        failureCategory = 'timeout'
+      } else if (messageLower.includes('enotfound') || messageLower.includes('dns')) {
+        failureCategory = 'dns_error'
+      } else if (messageLower.includes('econnrefused')) {
+        failureCategory = 'connection_refused'
+      } else if (messageLower.includes('tls') || messageLower.includes('certificate')) {
+        failureCategory = 'tls_error'
+      } else if (statusCode && statusCode >= 500) {
+        failureCategory = 'http_5xx'
+      } else if (statusCode && statusCode >= 400) {
+        failureCategory = 'http_4xx'
+      } else if (statusCode && statusCode >= 300) {
+        failureCategory = 'http_3xx'
+      } else {
+        failureCategory = 'unknown'
+      }
+    } else {
+      errorMessage = 'Unknown error'
+      failureCategory = failureCategory ?? 'unknown'
+    }
 
     await db.insert(deliveries).values({
       eventId,
       attempt: attemptNumber,
       status:  'FAILED',
-      error,
+      error: errorMessage,
     })
 
     await db.insert(eventAttempts).values({
       eventId,
       attempt: attemptNumber,
-      status,
+      status: statusCode,
+      attemptStartedAt,
+      responseReceivedAt,
+      durationMs,
+      requestHeaders,
+      responseHeaders,
       responseBody,
-      error: responseBody || error,
+      failureCategory,
+      error: errorMessage,
     })
 
     await db
       .update(events)
       .set({
         status:    attemptNumber >= maxRetries ? 'FAILED' : 'PENDING',
-        lastAttemptStatus: status,
-        lastError: responseBody || error,
+        lastAttemptStatus: statusCode,
+        lastError: errorMessage,
       })
       .where(eq(events.id, eventId))
 

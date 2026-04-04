@@ -4,12 +4,13 @@ import { createContext, createElement, useCallback, useContext, useEffect, useMe
 import { apiFetch } from './http'
 import { getAccessToken } from './access-token'
 import { createClient } from './supabase/client'
-import type { EndpointResponse, MeResponse, PaginatedEventsResponse } from './api-types'
+import type { DashboardEventStatsResponse, EndpointResponse, MeResponse } from './api-types'
 
 interface DashboardDataState {
   me: MeResponse | null
   endpoints: EndpointResponse[]
   eventsThisMonth: number
+  eventStats: DashboardEventStatsResponse | null
   loading: boolean
   error: string | null
 }
@@ -25,6 +26,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     me: null,
     endpoints: [],
     eventsThisMonth: 0,
+    eventStats: null,
     loading: true,
     error: null,
   })
@@ -46,15 +48,16 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         error: silent ? previous.error : null,
       }))
 
-      const [endpoints, eventsUsage] = await Promise.all([
+      const [endpoints, eventStats] = await Promise.all([
         apiFetch<EndpointResponse[]>('/endpoints', token),
-        apiFetch<PaginatedEventsResponse>('/events?limit=1', token),
+        apiFetch<DashboardEventStatsResponse>('/events/stats', token),
       ])
 
       setState((previous) => ({
         me,
         endpoints,
-        eventsThisMonth: eventsUsage.totalCount,
+        eventsThisMonth: eventStats.eventsThisMonth,
+        eventStats,
         loading: false,
         error: silent ? previous.error : null,
       }))

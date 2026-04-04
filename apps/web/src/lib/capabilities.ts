@@ -128,12 +128,13 @@ export function getReplayActionState(input: ReplayActionInput): ReplayActionStat
 
 export function getReplayUiState(input: ReplayActionInput): ReplayUiState {
   const decision = getReplayActionState(input)
+  const shouldRescue = input.status === 'FAILED' || (input.lastAttemptStatus ?? 0) >= 400
   const actionLabel =
     decision.code === 'status_in_progress'
       ? 'In progress'
-      : input.lastAttemptStatus === 200
-        ? 'Replay Event'
-        : 'Rescue Event'
+      : shouldRescue
+        ? 'Rescue Event'
+        : 'Replay Event'
 
   return {
     actionLabel,

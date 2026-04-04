@@ -57,6 +57,13 @@
       "when": 1775220299000,
       "tag": "0008_realtime_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1775400000000,
+      "tag": "0009_forensic_traceability",
+      "breakpoints": true
     }
   ]
 }

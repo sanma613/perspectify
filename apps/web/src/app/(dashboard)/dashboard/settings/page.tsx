@@ -448,7 +448,7 @@ export default function SettingsPage() {
           <li>● {freePlan.maxEventsPerMonth.toLocaleString()} events / month · {eventsThisMonth} used</li>
           <li>● {freePlan.maxEndpoints} endpoint · {endpoints.length} used</li>
           <li>● {freePlan.retentionDays * 24}h history retention</li>
-          <li>● {freePlan.maxReplays} replays per event</li>
+          <li>● {freePlan.maxReplays} replay/rescue attempts per event total</li>
           <li>● {freePlan.alertsEnabled ? 'Failure alerts enabled' : 'No failure alerts'}</li>
         </ul>
 
@@ -459,7 +459,7 @@ export default function SettingsPage() {
           <li>● {starterPlan.maxEventsPerMonth.toLocaleString()} events / month</li>
           <li>● {starterPlan.maxEndpoints} endpoints</li>
           <li>● {starterPlan.retentionDays} days history</li>
-          <li>● Unlimited replays</li>
+          <li>● Unlimited replay/rescue attempts</li>
           <li>● Email alerts on failure</li>
           <li>● Retention warnings before deletion</li>
         </ul>

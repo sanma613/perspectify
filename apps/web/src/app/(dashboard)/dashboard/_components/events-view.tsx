@@ -173,12 +173,12 @@ export function EventsView() {
 
     try {
       const token = await getAccessToken()
-      const result = await apiFetch<{ replayed: number }>('/events/replay-all', token, {
+      const result = await apiFetch<{ rescued: number }>('/events/rescue-all', token, {
         method: 'POST',
       })
       setActionSuccess(
-        result.replayed > 0
-          ? `${result.replayed} failed event${result.replayed === 1 ? '' : 's'} sent to rescue queue.`
+        result.rescued > 0
+          ? `${result.rescued} failed event${result.rescued === 1 ? '' : 's'} sent to rescue queue.`
           : 'No failed events available for Rescue All.'
       )
       for (const failedEvent of filteredEvents.filter((event) => resolveVisualState(event) === 'FAILED')) {
@@ -195,13 +195,13 @@ export function EventsView() {
     }
   }
 
-  async function replay(eventId: string) {
+  async function replay(eventId: string, mode: 'replay' | 'rescue' = 'replay') {
     setActionError(null)
     setActionSuccess(null)
     setPendingId(eventId)
     try {
       const token = await getAccessToken()
-      await apiFetch<{ replayed: true }>(`/events/${eventId}/replay`, token, {
+      await apiFetch<{ replayed?: true; rescued?: true }>(`/events/${eventId}/${mode}`, token, {
         method: 'POST',
       })
       setActionSuccess('Event queued successfully.')
@@ -396,7 +396,7 @@ export function EventsView() {
               return
             }
 
-            void replay(event.id)
+            void replay(event.id, visualState === 'FAILED' ? 'rescue' : 'replay')
           }
 
           const payloadText = JSON.stringify(event.payload ?? {}, null, 2)
@@ -700,7 +700,10 @@ export function EventsView() {
         open={Boolean(detailEventId)}
         event={detailEventId ? displayEvents.find((item) => item.id === detailEventId) ?? null : null}
         onClose={() => setDetailEventId(null)}
-        onReplay={(eventId) => replay(eventId)}
+        onReplay={(eventId) => {
+          const currentStatus = displayEvents.find((item) => item.id === eventId)?.status
+          return replay(eventId, currentStatus === 'FAILED' ? 'rescue' : 'replay')
+        }}
         plan={me.plan}
         endpointNameFallback={
           detailEventId

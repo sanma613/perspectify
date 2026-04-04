@@ -1,26 +1,40 @@
 'use client'
 
-import { AlertCircle, Copy, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, Copy, ExternalLink, Loader2, Zap } from 'lucide-react'
 import { getAccessToken } from '../../../../lib/access-token'
-import type { EventDetailResponse, EventResponse } from '../../../../lib/api-types'
+import type { EventAttemptResponse, EventDetailResponse, EventResponse } from '../../../../lib/api-types'
 import { apiFetch } from '../../../../lib/http'
 import { useMobile } from '../../../../lib/hooks/use-mobile'
-import { PLANS } from '../../../../lib/plans'
 import { BottomSheet } from './ui/bottom-sheet'
-import { ConfirmModal } from './ui/confirm-modal'
 import { SlideOver } from './ui/slide-over'
+import { CollapsibleSection } from '../../../../components/collapsible-section'
+import { HeadersTable } from '../../../../components/headers-table'
+import { JsonViewer } from '../../../../components/json-viewer'
+import { ResponseBody } from '../../../../components/response-body'
 
 type DetailTab = 'overview' | 'payload' | 'response'
 
-interface EventDetailDrawerProps {
-  open: boolean
-  event: EventResponse | null
-  onClose: () => void
-  onReplay: (eventId: string) => Promise<void>
-  plan: 'free' | 'starter'
-  endpointNameFallback?: string | null
-  destinationFallback?: string | null
+const FAILURE_EXPLANATIONS: Record<string, string> = {
+  timeout: 'Perspectify waited 10,000ms for a response and cut the connection. Your destination took too long to reply.',
+  dns_error: "The destination URL could not be resolved. The domain may be wrong or your automation tool's server may be down.",
+  connection_refused: 'The destination server actively refused the connection. The service may be down or the port blocked.',
+  tls_error: 'SSL/TLS handshake failed. The destination may have an invalid or expired certificate.',
+  http_4xx: 'The destination rejected the request. This usually means authentication failed or the webhook URL changed.',
+  http_5xx: 'The destination had an internal error. Check your Zapier scenario or Make workflow for failures.',
+  http_3xx: 'The destination returned a redirect. Perspectify does not follow redirects. Update the destination URL.',
+  unknown: 'An unexpected error occurred. Check the error message above for details.',
+}
+
+const FAILURE_CATEGORY_TITLES: Record<string, string> = {
+  timeout: 'Connection Timeout (10,000ms exceeded)',
+  dns_error: 'DNS Resolution Failed',
+  connection_refused: 'Connection Refused',
+  tls_error: 'TLS/SSL Certificate Error',
+  http_4xx: 'Client Error',
+  http_5xx: 'Server Error',
+  http_3xx: 'Redirect (not followed)',
+  unknown: 'Unknown Error',
 }
 
 export function EventDetailDrawer({
@@ -29,57 +43,39 @@ export function EventDetailDrawer({
   onClose,
   onReplay,
   plan,
-  endpointNameFallback,
-  destinationFallback,
-}: EventDetailDrawerProps) {
+}: {
+  open: boolean
+  event: EventResponse | null
+  onClose: () => void
+  onReplay: (eventId: string) => Promise<void>
+  plan: 'free' | 'starter'
+  endpointNameFallback?: string | null
+  destinationFallback?: string | null
+}) {
   const isMobile = useMobile()
   const [activeTab, setActiveTab] = useState<DetailTab>('overview')
   const [detailCache, setDetailCache] = useState<Record<string, EventDetailResponse>>({})
   const [loadingDetail, setLoadingDetail] = useState(false)
-  const [detailError, setDetailError] = useState<string | null>(null)
-  const [showReplayConfirm, setShowReplayConfirm] = useState(false)
-  const [replayLoading, setReplayLoading] = useState(false)
-  const [replayError, setReplayError] = useState<string | null>(null)
+  const [actionPending, setActionPending] = useState(false)
 
   const selectedId = event?.id ?? null
   const detail = selectedId ? detailCache[selectedId] : undefined
   const effectiveEvent = detail ?? event
 
-  const endpointName =
-    detail?.endpoint?.name ??
-    effectiveEvent?.endpointName ??
-    endpointNameFallback ??
-    'Unknown endpoint'
-
-  const destination =
-    detail?.endpoint?.destination ??
-    effectiveEvent?.destinationUrl ??
-    destinationFallback ??
-    'Unknown destination'
-
   const attempts = useMemo(() => {
-    const input = effectiveEvent?.eventAttempts ?? []
-    return [...input].sort((a, b) => a.attempt - b.attempt)
+    const source = effectiveEvent?.eventAttempts ?? []
+    return [...source].sort((a, b) => a.attempt - b.attempt)
   }, [effectiveEvent?.eventAttempts])
 
-  const fallbackDeliveries = effectiveEvent?.deliveries ?? []
-  const latestAttempt = attempts[attempts.length - 1] ?? null
-  const statusLabel = effectiveEvent ? readableStatus(resolveVisualState(effectiveEvent)) : 'In progress'
+  const lastAttempt = attempts[attempts.length - 1] ?? null
 
   const ensureDetail = useCallback(async () => {
     if (!selectedId || detailCache[selectedId]) return
-
     setLoadingDetail(true)
-    setDetailError(null)
     try {
       const token = await getAccessToken()
       const data = await apiFetch<EventDetailResponse>(`/events/${selectedId}`, token)
-      setDetailCache((current) => ({
-        ...current,
-        [selectedId]: data,
-      }))
-    } catch (fetchError) {
-      setDetailError(fetchError instanceof Error ? fetchError.message : 'Could not load event detail.')
+      setDetailCache((current) => ({ ...current, [selectedId]: data }))
     } finally {
       setLoadingDetail(false)
     }
@@ -88,460 +84,303 @@ export function EventDetailDrawer({
   useEffect(() => {
     if (!open) return
     setActiveTab('overview')
-    setDetailError(null)
-    setShowReplayConfirm(false)
-    setReplayError(null)
-  }, [open, selectedId])
+    void ensureDetail()
+  }, [open, ensureDetail])
 
-  async function handleReplayConfirm() {
-    if (!effectiveEvent || replayLoading) return
-    setReplayLoading(true)
-    setReplayError(null)
-    try {
-      await onReplay(effectiveEvent.id)
-      setShowReplayConfirm(false)
-    } catch (error) {
-      setReplayError(error instanceof Error ? error.message : 'Replay failed. Try again.')
-    } finally {
-      setReplayLoading(false)
-    }
-  }
+  if (!effectiveEvent) return null
 
-  function openTab(tab: DetailTab) {
-    setActiveTab(tab)
-    if (tab === 'payload' || tab === 'response') {
-      void ensureDetail()
-    }
-  }
-
-  if (!effectiveEvent) {
-    return null
-  }
-
-  const body = (
+  const content = (
     <div className="space-y-4">
       <div className="inline-flex rounded-xl border border-white/10 bg-black/30 p-1 text-xs">
-        {(['overview', 'payload', 'response'] as const).map((tab) => {
-          const active = activeTab === tab
-          return (
-            <button
-              className={`rounded-lg px-3 py-1.5 font-medium capitalize transition ${active ? 'bg-emerald-400/20 text-emerald-100' : 'text-zinc-400 hover:text-zinc-100'}`}
-              key={tab}
-              onClick={() => openTab(tab)}
-              type="button"
-            >
-              {tab}
-            </button>
-          )
-        })}
+        {(['overview', 'payload', 'response'] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => {
+              setActiveTab(tab)
+              if (tab !== 'overview') {
+                void ensureDetail()
+              }
+            }}
+            className={`rounded-lg px-3 py-1.5 capitalize ${activeTab === tab ? 'bg-emerald-400/20 text-emerald-100' : 'text-zinc-400 hover:text-zinc-200'}`}
+          >
+            {tab}
+          </button>
+        ))}
       </div>
 
-      {detailError ? <p className="text-xs text-red-300">{detailError}</p> : null}
-
       {activeTab === 'overview' ? (
-        <OverviewTab
-          event={effectiveEvent}
-          endpointName={endpointName}
-          destination={destination}
-          attempts={attempts}
-          fallbackDeliveries={fallbackDeliveries}
-          statusLabel={statusLabel}
-          plan={plan}
-          replayLoading={replayLoading}
-          onReplay={() => setShowReplayConfirm(true)}
-        />
+        <div>
+          <div className="flex items-start justify-between p-6 pb-4">
+            <div>
+              <StatusBadge status={effectiveEvent.status} />
+              <p className="mt-1.5 font-mono text-xs text-zinc-500">
+                {new Date(effectiveEvent.receivedAt).toLocaleString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                  fractionalSecondDigits: 3,
+                })}
+              </p>
+              {effectiveEvent.ingestionLatencyMs !== null && effectiveEvent.ingestionLatencyMs >= 0 ? (
+                <p className="mt-1 flex items-center gap-1.5 text-xs text-zinc-600">
+                  <Zap size={11} className="text-green-500" />
+                  Received {effectiveEvent.ingestionLatencyMs}ms after Stripe sent it
+                </p>
+              ) : null}
+            </div>
+
+            <button
+              className={`rounded-xl px-4 py-2.5 text-sm font-bold ${effectiveEvent.status === 'FAILED' ? 'bg-green-500 text-black' : 'bg-zinc-700 text-white'}`}
+              disabled={actionPending}
+              onClick={async () => {
+                setActionPending(true)
+                try {
+                  await onReplay(effectiveEvent.id)
+                } finally {
+                  setActionPending(false)
+                }
+              }}
+              type="button"
+            >
+              {actionPending ? <Loader2 className="h-4 w-4 animate-spin" /> : effectiveEvent.status === 'FAILED' ? 'Rescue' : 'Replay'}
+            </button>
+          </div>
+
+          <div className="px-6 pb-6">
+            <MetadataGrid event={effectiveEvent} maxRetries={plan === 'starter' ? 7 : 3} />
+            <Timeline attempts={attempts} defaultCollapsed={isMobile} />
+          </div>
+        </div>
       ) : null}
 
       {activeTab === 'payload' ? (
-        <PayloadTab
-          loadingDetail={loadingDetail}
-          payload={detail?.payload ?? effectiveEvent.payload ?? {}}
-          sourceHeaders={detail?.sourceHeaders ?? effectiveEvent.sourceHeaders}
-        />
+        <div className="px-6 pb-6">
+          <div className="mb-3 flex items-center gap-2">
+            <button
+              className="rounded-lg border border-white/10 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200"
+              onClick={() => {
+                void navigator.clipboard.writeText(JSON.stringify(effectiveEvent.payload ?? {}, null, 2))
+              }}
+              type="button"
+            >
+              Copy JSON
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 pb-3">
+            <span className="text-xs text-zinc-600">Stripe event ID:</span>
+            <span className="font-mono text-xs text-zinc-400">{effectiveEvent.stripeId}</span>
+            <button
+              className="p-1 text-zinc-600 hover:text-zinc-400"
+              onClick={() => {
+                void navigator.clipboard.writeText(effectiveEvent.stripeId)
+              }}
+              type="button"
+            >
+              <Copy size={12} />
+            </button>
+            <a
+              href={`https://dashboard.stripe.com/events/${effectiveEvent.stripeId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-auto flex items-center gap-1 text-xs text-zinc-600 hover:text-zinc-400"
+            >
+              View in Stripe <ExternalLink size={11} />
+            </a>
+          </div>
+
+          {loadingDetail ? (
+            <div className="space-y-2">
+              <div className="h-3 w-2/3 animate-pulse rounded bg-white/10" />
+              <div className="h-3 w-1/2 animate-pulse rounded bg-white/10" />
+              <div className="h-3 w-4/5 animate-pulse rounded bg-white/10" />
+            </div>
+          ) : (
+            <div className="json-scroll max-h-[420px] overflow-y-auto rounded-xl border border-white/10 bg-black/20 p-3">
+              <JsonViewer data={effectiveEvent.payload ?? {}} defaultExpanded={1} />
+            </div>
+          )}
+        </div>
       ) : null}
 
       {activeTab === 'response' ? (
-        <ResponseTab loadingDetail={loadingDetail} latestAttempt={latestAttempt} />
-      ) : null}
+        <div className="px-6 pb-6">
+          {effectiveEvent.status === 'FAILED' && lastAttempt?.failureCategory ? (
+            <div className="mx-0 mb-2 mt-4 flex items-start gap-3 rounded-xl border border-red-500/15 bg-red-500/10 p-4">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-400" />
+              <div>
+                <p className="mb-1 text-sm font-medium text-zinc-200">
+                  {lastAttempt.failureCategory.startsWith('http_') && lastAttempt.status
+                    ? `HTTP ${lastAttempt.status} — ${FAILURE_CATEGORY_TITLES[lastAttempt.failureCategory]}`
+                    : FAILURE_CATEGORY_TITLES[lastAttempt.failureCategory]}
+                </p>
+                <p className="text-xs leading-relaxed text-zinc-400">
+                  {FAILURE_EXPLANATIONS[lastAttempt.failureCategory]}
+                </p>
+              </div>
+            </div>
+          ) : null}
 
-      {replayError ? <p className="text-red-400 text-xs">{replayError}</p> : null}
+          <Timeline attempts={attempts} defaultCollapsed={isMobile} />
+        </div>
+      ) : null}
     </div>
   )
 
   if (isMobile) {
     return (
-      <>
-        <BottomSheet onClose={onClose} open={open} title="Event details">
-          {body}
-        </BottomSheet>
-
-        <BottomSheet onClose={() => setShowReplayConfirm(false)} open={showReplayConfirm} title="Replay this event?">
-          <p className="text-sm text-zinc-300 leading-relaxed">
-            This event was already delivered to <span className="text-white font-medium">{endpointName}</span>. Replaying it will send the same payload again.
-          </p>
-
-          <div className="bg-amber-500/8 border border-amber-500/25 rounded-lg p-4 mt-4 flex gap-3">
-            <AlertCircle size={16} className="text-amber-400 shrink-0 mt-0.5" />
-            <p className="text-sm text-zinc-300">
-              Your automation may process this event twice, potentially creating duplicate records, charges, or emails.
-            </p>
-          </div>
-
-          {plan === 'free' ? (
-            <div className="bg-red-500/6 border border-red-500/25 rounded-lg p-3 mt-3">
-              <p className="text-sm text-zinc-300">
-                This will use 1 of your {Math.max(0, PLANS.free.maxReplays - effectiveEvent.replayCount)} remaining free replays for this event.
-              </p>
-            </div>
-          ) : null}
-
-          <div className="mt-5 flex gap-2">
-            <button
-              className="h-11 flex-1 rounded-lg bg-zinc-700 text-sm text-white"
-              onClick={() => setShowReplayConfirm(false)}
-              type="button"
-            >
-              Cancel
-            </button>
-            <button
-              className="h-11 flex-1 rounded-lg bg-zinc-600 text-sm font-bold text-white inline-flex items-center justify-center gap-1.5"
-              disabled={replayLoading}
-              onClick={() => {
-                void handleReplayConfirm()
-              }}
-              type="button"
-            >
-              {replayLoading ? <Loader2 size={14} className="animate-spin" /> : null}
-              Replay anyway
-            </button>
-          </div>
-        </BottomSheet>
-      </>
+      <BottomSheet onClose={onClose} open={open} title="Event details">
+        {content}
+      </BottomSheet>
     )
   }
 
   return (
-    <>
-      <SlideOver onClose={onClose} open={open} title="Event details">
-        {body}
-      </SlideOver>
-
-      <ConfirmModal
-        cancelLabel="Cancel"
-        confirmLabel={replayLoading ? 'Replaying...' : 'Replay anyway'}
-        onClose={() => setShowReplayConfirm(false)}
-        onConfirm={() => {
-          void handleReplayConfirm()
-        }}
-        open={showReplayConfirm}
-        title="Replay this event?"
-        description={`This event was already delivered to ${endpointName}. Replaying it will send the same payload again.`}
-      >
-        <div className="bg-amber-500/8 border border-amber-500/25 rounded-lg p-4 mt-1 flex gap-3">
-          <AlertCircle size={16} className="text-amber-400 shrink-0 mt-0.5" />
-          <p className="text-sm text-zinc-300">
-            Your automation may process this event twice, potentially creating duplicate records, charges, or emails.
-          </p>
-        </div>
-        {plan === 'free' ? (
-          <div className="bg-red-500/6 border border-red-500/25 rounded-lg p-3 mt-3">
-            <p className="text-sm text-zinc-300">
-              This will use 1 of your {Math.max(0, PLANS.free.maxReplays - effectiveEvent.replayCount)} remaining free replays for this event.
-            </p>
-          </div>
-        ) : null}
-      </ConfirmModal>
-    </>
+    <SlideOver onClose={onClose} open={open} title="Event details">
+      {content}
+    </SlideOver>
   )
 }
 
-function OverviewTab({
-  event,
-  endpointName,
-  destination,
-  attempts,
-  fallbackDeliveries,
-  statusLabel,
-  plan,
-  replayLoading,
-  onReplay,
-}: {
-  event: EventResponse
-  endpointName: string
-  destination: string
-  attempts: EventResponse['eventAttempts']
-  fallbackDeliveries: NonNullable<EventResponse['deliveries']>
-  statusLabel: string
-  plan: 'free' | 'starter'
-  replayLoading: boolean
-  onReplay: () => void
-}) {
-  const payloadBytes = formatBytes(event.payloadSize)
-  const responseTime = estimateResponseTime(event.receivedAt, attempts[attempts.length - 1]?.createdAt)
-  const isDelivered = statusLabel === 'Delivered'
+function StatusBadge({ status }: { status: EventResponse['status'] }) {
+  const tone = status === 'FAILED' ? 'bg-red-500/10 text-red-400' : status === 'DELIVERED' ? 'bg-green-500/10 text-green-400' : 'bg-amber-500/10 text-amber-400'
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${tone}`}>{status}</span>
+}
+
+function MetadataGrid({ event, maxRetries }: { event: EventResponse; maxRetries: number }) {
+  const payloadSizeKb = ((event.payloadSize ?? 0) / 1024).toFixed(1)
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-zinc-200">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full border border-white/15 bg-black/40 px-2 py-0.5 text-xs">{statusLabel}</span>
-          <span className="text-xs text-zinc-500">{new Date(event.receivedAt).toLocaleString()}</span>
-          <span className="rounded-full border border-white/10 bg-black/35 px-2 py-0.5 text-xs text-zinc-300">replays: {event.replayCount}</span>
-        </div>
+    <div className="mb-6 grid grid-cols-2 gap-x-8 gap-y-4">
+      <MetaCell label="STRIPE ID" value={event.stripeId} mono copyable />
+      <MetaCell label="PERSPECTIFY ID" value={event.id} mono copyable />
+      <div>
+        <p className="mb-1 text-xs uppercase tracking-widest text-zinc-600">INGESTION LATENCY</p>
+        <p className={`font-mono text-sm ${event.ingestionLatencyMs === null || event.ingestionLatencyMs < 0 ? 'text-zinc-600' : event.ingestionLatencyMs < 500 ? 'text-green-400' : event.ingestionLatencyMs <= 2000 ? 'text-amber-400' : 'text-red-400'}`}>
+          {event.ingestionLatencyMs === null ? 'N/A' : event.ingestionLatencyMs < 0 ? 'N/A (clock skew)' : `${event.ingestionLatencyMs}ms`}
+        </p>
+        <p className="text-xs text-zinc-600">Stripe → Perspectify</p>
       </div>
-
-      {isDelivered ? (
-        <div>
-          <button
-            className="px-3 py-1.5 rounded-lg bg-zinc-700 text-white text-xs font-bold inline-flex items-center gap-1.5"
-            disabled={replayLoading}
-            onClick={onReplay}
-            type="button"
-          >
-            {replayLoading ? <Loader2 size={14} className="animate-spin" /> : null}
-            Replay
-          </button>
-          {plan === 'free' ? (
-            <p className="mt-2 text-xs text-zinc-500">Free replays remaining: {Math.max(0, PLANS.free.maxReplays - event.replayCount)}</p>
-          ) : null}
-        </div>
-      ) : null}
-
-      <div className="grid gap-3 rounded-xl border border-white/10 bg-black/25 p-3 text-sm sm:grid-cols-2">
-        <MetaItem label="Endpoint" value={endpointName} />
-        <MetaItem label="Destination" value={destination} />
-        <MetaItem label="Payload size" value={payloadBytes} />
-        <MetaItem label="Attempts" value={String(event.attempts)} />
-        <MetaItem label="Response time" value={responseTime} />
-      </div>
-
-      <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-        <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Delivery timeline</p>
-        {attempts.length > 0 ? (
-          <ul className="mt-2 space-y-2 text-xs text-zinc-300">
-            {attempts.map((attempt) => (
-              <li className="flex flex-wrap items-center gap-2" key={attempt.id}>
-                <span className="rounded bg-black/45 px-1.5 py-0.5">Attempt {attempt.attempt}</span>
-                <span>{new Date(attempt.createdAt).toLocaleTimeString()}</span>
-                <span className={attempt.status !== null && attempt.status >= 400 ? 'text-red-300' : 'text-emerald-300'}>
-                  {attempt.status ? `HTTP ${attempt.status}` : 'No status'}
-                </span>
-                {attempt.error ? <span className="truncate text-red-300">{attempt.error}</span> : null}
-              </li>
-            ))}
-          </ul>
-        ) : fallbackDeliveries.length > 0 ? (
-          <ul className="mt-2 space-y-2 text-xs text-zinc-300">
-            {fallbackDeliveries.map((delivery) => (
-              <li className="flex flex-wrap items-center gap-2" key={delivery.id}>
-                <span className="rounded bg-black/45 px-1.5 py-0.5">Attempt {delivery.attempt}</span>
-                <span>{new Date(delivery.attemptedAt).toLocaleTimeString()}</span>
-                <span className={delivery.statusCode !== null && delivery.statusCode >= 400 ? 'text-red-300' : 'text-emerald-300'}>
-                  {delivery.statusCode ? `HTTP ${delivery.statusCode}` : delivery.status}
-                </span>
-                {delivery.error ? <span className="truncate text-red-300">{delivery.error}</span> : null}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-2 text-xs text-zinc-500">No delivery attempts recorded yet.</p>
-        )}
-      </div>
+      <MetaCell label="PAYLOAD SIZE" value={`${payloadSizeKb} KB`} mono />
+      <MetaCell label="TOTAL ATTEMPTS" value={`${event.attempts} of ${maxRetries}`} mono />
+      <MetaCell label="SIGNATURE" value={event.signatureValid ? 'Valid ✓' : 'Invalid ✗'} valueClass={event.signatureValid ? 'text-green-400' : 'text-red-400'} />
     </div>
   )
 }
 
-function PayloadTab({
-  loadingDetail,
-  payload,
-  sourceHeaders,
-}: {
-  loadingDetail: boolean
-  payload: unknown
-  sourceHeaders: Record<string, string> | null | undefined
-}) {
-  const [expanded, setExpanded] = useState(true)
-  const payloadText = JSON.stringify(payload ?? {}, null, 2)
-
-  return (
-    <div className="space-y-3">
-      {loadingDetail ? <p className="text-xs text-zinc-500">Loading payload...</p> : null}
-      <div className="flex items-center gap-2">
-        <button
-          className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-black/35 px-2.5 py-1.5 text-xs text-zinc-200 hover:bg-black/50"
-          onClick={() => {
-            void navigator.clipboard.writeText(payloadText)
-          }}
-          type="button"
-        >
-          <Copy className="h-3.5 w-3.5" />
-          Copy JSON
-        </button>
-        <button
-          className="rounded-lg border border-white/10 bg-black/35 px-2.5 py-1.5 text-xs text-zinc-200 hover:bg-black/50"
-          onClick={() => setExpanded((current) => !current)}
-          type="button"
-        >
-          {expanded ? 'Collapse' : 'Expand'}
-        </button>
-      </div>
-      {expanded ? (
-        <div className="max-h-80 overflow-auto rounded-lg border border-white/10 bg-black/45 p-3 text-xs text-zinc-200">
-          <JsonViewer value={payload ?? {}} />
-        </div>
-      ) : null}
-
-      <details className="rounded-lg border border-white/10 bg-black/25 p-3" open>
-        <summary className="cursor-pointer text-xs text-zinc-300">Source headers</summary>
-        {sourceHeaders ? (
-          <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-white/10 bg-black/45 p-2 text-xs text-zinc-200">
-            {JSON.stringify(sourceHeaders, null, 2)}
-          </pre>
-        ) : (
-          <p className="mt-2 text-xs text-zinc-500">No headers captured.</p>
-        )}
-      </details>
-    </div>
-  )
-}
-
-function ResponseTab({
-  loadingDetail,
-  latestAttempt,
-}: {
-  loadingDetail: boolean
-  latestAttempt: EventResponse['eventAttempts'][number] | null
-}) {
-  const body = latestAttempt?.responseBody ?? latestAttempt?.error ?? null
-  const status = latestAttempt?.status ?? null
-
-  return (
-    <div className="space-y-3">
-      {loadingDetail ? <p className="text-xs text-zinc-500">Loading response...</p> : null}
-
-      <div className="rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-zinc-200">
-        <p className="text-xs uppercase tracking-wider text-zinc-500">Latest attempt</p>
-        <p className="mt-1 text-sm text-zinc-100">Status: {status ?? 'No status'}</p>
-        <p className="mt-1 text-xs text-zinc-400">{statusHelperText(status)}</p>
-      </div>
-
-      {body ? (
-        <pre className="max-h-80 overflow-auto rounded-lg border border-white/10 bg-black/45 p-3 text-xs text-zinc-200">
-          {formatResponseBody(body)}
-        </pre>
-      ) : (
-        <p className="text-xs text-zinc-500">No response body recorded for the latest attempt.</p>
-      )}
-    </div>
-  )
-}
-
-function MetaItem({ label, value }: { label: string; value: string }) {
+function Timeline({ attempts, defaultCollapsed }: { attempts: EventAttemptResponse[]; defaultCollapsed: boolean }) {
   return (
     <div>
-      <p className="text-xs uppercase tracking-wider text-zinc-500">{label}</p>
-      <p className="mt-1 break-all text-sm text-zinc-100">{value}</p>
-    </div>
-  )
-}
+      <p className="mb-3 text-xs uppercase tracking-widest text-zinc-600">DELIVERY TIMELINE</p>
+      <div className="relative">
+        <div className="absolute bottom-4 left-[7px] top-4 w-px bg-zinc-800" />
 
-function resolveVisualState(event: { status: string; lastAttemptStatus: number | null }) {
-  if (event.status === 'DELIVERING') return 'IN_PROGRESS'
-  if (event.status === 'PENDING') return 'IN_PROGRESS'
-  if (event.lastAttemptStatus === 200) return 'DELIVERED'
-  if (event.lastAttemptStatus !== null && event.lastAttemptStatus >= 400) return 'FAILED'
-  return 'IN_PROGRESS'
-}
+        {attempts.map((attempt) => {
+          const isSuccess = attempt.status !== null && attempt.status >= 200 && attempt.status < 300
+          const isInFlight = attempt.status === null
 
-function readableStatus(state: 'IN_PROGRESS' | 'FAILED' | 'DELIVERED') {
-  if (state === 'FAILED') return 'Failed'
-  if (state === 'IN_PROGRESS') return 'In progress'
-  return 'Delivered'
-}
+          return (
+            <div key={attempt.id} className="relative flex gap-4 pb-5 last:pb-0">
+              <div className={`relative z-10 mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full border-2 ${isSuccess ? 'border-green-500 bg-green-500' : isInFlight ? 'animate-pulse border-amber-400 bg-amber-400' : 'border-red-500 bg-red-500'}`} />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-sm font-medium text-zinc-200">Attempt #{attempt.attempt}</span>
+                  <span className={`rounded px-2 py-0.5 font-mono text-xs ${isSuccess ? 'bg-green-500/10 text-green-400' : isInFlight ? 'bg-amber-500/10 text-amber-400' : 'bg-red-500/10 text-red-400'}`}>
+                    {attempt.status ? `${attempt.status}` : isInFlight ? 'In Flight...' : 'Error'}
+                  </span>
+                  {attempt.durationMs !== null && attempt.durationMs !== undefined ? (
+                    <span className="font-mono text-xs text-zinc-500">{attempt.durationMs}ms</span>
+                  ) : null}
+                  {attempt.failureCategory ? (
+                    <span className="rounded border border-red-500/15 bg-red-500/10 px-2 py-0.5 font-mono text-xs text-red-400">
+                      {attempt.failureCategory.replace('_', ' ')}
+                    </span>
+                  ) : null}
+                  <span className="ml-auto font-mono text-xs tabular-nums text-zinc-600">
+                    {attempt.attemptStartedAt ? new Date(attempt.attemptStartedAt).toLocaleString() : 'N/A'}
+                  </span>
+                </div>
 
-function formatBytes(bytes: number | null) {
-  if (!bytes) return '0 KB'
-  const kb = bytes / 1024
-  return `${kb.toFixed(kb >= 10 ? 0 : 1)} KB`
-}
+                {attempt.error ? (
+                  <div className="mt-2 rounded-lg border border-red-500/15 bg-red-500/10 px-3 py-2">
+                    <p className="break-all font-mono text-xs text-red-400">{attempt.error}</p>
+                    {attempt.status && attempt.status >= 400 ? (
+                      <a
+                        href={`https://developer.mozilla.org/docs/Web/HTTP/Status/${attempt.status}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 inline-block text-xs text-zinc-600 underline underline-offset-2 hover:text-zinc-400"
+                      >
+                        What is {attempt.status}?
+                      </a>
+                    ) : null}
+                  </div>
+                ) : null}
 
-function estimateResponseTime(receivedAt: string, latestAttemptAt?: string) {
-  if (!latestAttemptAt) return 'Pending'
-  const delta = Math.max(0, new Date(latestAttemptAt).getTime() - new Date(receivedAt).getTime())
-  if (delta < 1000) return `${delta} ms`
-  return `${(delta / 1000).toFixed(1)} s`
-}
+                {attempt.failureCategory ? (
+                  <p className="mt-1.5 text-xs leading-relaxed text-zinc-500">
+                    {FAILURE_EXPLANATIONS[attempt.failureCategory]}
+                  </p>
+                ) : null}
 
-function statusHelperText(status: number | null) {
-  if (status === null) return 'Still waiting for a destination response.'
-  if (status >= 500) return 'Destination server error. Check destination logs and retry later.'
-  if (status >= 400) return 'Destination rejected the request. Validate auth and payload format.'
-  if (status >= 200 && status < 300) return 'Successful destination response.'
-  return 'Timeout or network issue can appear with empty response bodies.'
-}
+                <CollapsibleSection label="Request headers" defaultOpen={false}>
+                  <HeadersTable headers={attempt.requestHeaders} />
+                </CollapsibleSection>
 
-function formatResponseBody(body: string) {
-  try {
-    return JSON.stringify(JSON.parse(body), null, 2)
-  } catch {
-    return body
-  }
-}
+                {attempt.responseHeaders ? (
+                  <CollapsibleSection label="Response headers" defaultOpen={false}>
+                    <HeadersTable headers={attempt.responseHeaders} />
+                  </CollapsibleSection>
+                ) : null}
 
-function JsonViewer({ value }: { value: unknown }) {
-  return (
-    <div className="font-mono">
-      <JsonNode value={value} label="root" depth={0} />
-    </div>
-  )
-}
-
-function JsonNode({
-  value,
-  label,
-  depth,
-}: {
-  value: unknown
-  label?: string
-  depth: number
-}) {
-  if (value === null || typeof value !== 'object') {
-    return (
-      <div className="whitespace-pre-wrap">
-        {label ? <span className="text-emerald-300">{label}: </span> : null}
-        <span className="text-cyan-200">{formatJsonScalar(value)}</span>
-      </div>
-    )
-  }
-
-  const entries = Array.isArray(value) ? value.map((item, index) => [String(index), item]) : Object.entries(value)
-  const summaryLabel = Array.isArray(value) ? `Array(${entries.length})` : `Object(${entries.length})`
-  const isOpen = depth < 1
-
-  return (
-    <details className="ml-2" open={isOpen}>
-      <summary className="cursor-pointer select-none text-zinc-300">
-        {label ? <span className="text-emerald-300">{label}: </span> : null}
-        <span className="text-zinc-400">{summaryLabel}</span>
-      </summary>
-      <div className="mt-1 space-y-1">
-        {entries.length === 0 ? (
-          <div className="ml-4 text-zinc-500">Empty</div>
-        ) : (
-          entries.map(([childLabel, childValue]) => (
-            <div className="ml-4" key={`${label ?? 'root'}-${childLabel}`}>
-              <JsonNode value={childValue} label={childLabel} depth={depth + 1} />
+                {attempt.responseBody ? (
+                  <CollapsibleSection label="Response body" defaultOpen={!isSuccess && !defaultCollapsed}>
+                    <ResponseBody body={attempt.responseBody} />
+                  </CollapsibleSection>
+                ) : null}
+              </div>
             </div>
-          ))
-        )}
+          )
+        })}
       </div>
-    </details>
+    </div>
   )
 }
 
-function formatJsonScalar(value: unknown) {
-  if (value === null) return 'null'
-  if (typeof value === 'string') return `"${value}"`
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  return String(value)
+function MetaCell({
+  label,
+  value,
+  mono,
+  copyable,
+  valueClass,
+}: {
+  label: string
+  value: string
+  mono?: boolean
+  copyable?: boolean
+  valueClass?: string
+}) {
+  return (
+    <div>
+      <p className="mb-1 text-xs uppercase tracking-widest text-zinc-600">{label}</p>
+      <div className="flex items-center gap-2">
+        <p className={`text-sm text-zinc-200 ${mono ? 'font-mono text-xs' : ''} ${valueClass ?? ''}`}>{value}</p>
+        {copyable ? (
+          <button
+            className="text-zinc-600 hover:text-zinc-300"
+            onClick={() => {
+              void navigator.clipboard.writeText(value)
+            }}
+            type="button"
+          >
+            <Copy size={12} />
+          </button>
+        ) : null}
+      </div>
+    </div>
+  )
 }

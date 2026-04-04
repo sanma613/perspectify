@@ -35,7 +35,13 @@ export interface EventAttemptResponse {
   eventId: string
   attempt: number
   status: number | null
+  durationMs: number | null
+  attemptStartedAt: string | null
+  responseReceivedAt: string | null
+  requestHeaders: Record<string, string> | null
+  responseHeaders: Record<string, string> | null
   responseBody: string | null
+  failureCategory: string | null
   error: string | null
   createdAt: string
 }
@@ -46,11 +52,15 @@ export interface EventResponse {
   endpointName?: string | null
   stripeId: string
   type: string
-  payload: Record<string, unknown>
+  payload?: Record<string, unknown>
   payloadSize: number | null
-  sourceHeaders: Record<string, string> | null
+  sourceHeaders?: Record<string, string> | null
   destinationUrl: string | null
   providerName: string | null
+  ingestionLatencyMs: number | null
+  stripeGeneratedAt: string | null
+  signatureValid: boolean
+  failureCategory?: string | null
   status: 'PENDING' | 'DELIVERING' | 'DELIVERED' | 'FAILED'
   attempts: number
   replayCount: number
@@ -81,4 +91,14 @@ export interface PaginatedEventsResponse {
   hasMore: boolean
   nextCursor: EventsCursor | null
   totalCount: number
+}
+
+export interface DashboardEventStatsResponse {
+  eventsThisMonth: number
+  delivered: number
+  failed: number
+  pending: number
+  avgResponseMs: number | null
+  failedRecent: Array<EventResponse & { latestAttempt: EventAttemptResponse | null }>
+  recentDelivered: Array<EventResponse & { latestAttempt: EventAttemptResponse | null }>
 }

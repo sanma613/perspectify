@@ -239,7 +239,7 @@ export default function DashboardPage() {
     setPendingRescue(eventId)
     try {
       const token = await getAccessToken()
-      await apiFetch(`/events/${eventId}/replay`, token, { method: 'POST' })
+      await apiFetch(`/events/${eventId}/rescue`, token, { method: 'POST' })
       patchEvent(eventId, (event) => ({
         ...event,
         status: 'PENDING',
@@ -254,7 +254,7 @@ export default function DashboardPage() {
     setRescueAllLoading(true)
     try {
       const token = await getAccessToken()
-      await apiFetch('/events/replay-all', token, { method: 'POST' })
+      await apiFetch('/events/rescue-all', token, { method: 'POST' })
       for (const failedEvent of failedEvents) {
         patchEvent(failedEvent.id, (event) => ({
           ...event,
@@ -298,7 +298,7 @@ export default function DashboardPage() {
             <MetricCard label="Events" subtext="this month" value={String(eventsThisMonth)} />
             <MetricCard colorVariant="success" label="Delivered" subtext="successful" value={String(deliveredEvents.length)} />
             <MetricCard colorVariant={failedEvents.length > 0 ? 'danger' : 'default'} label="Failed" subtext="needs rescue" value={String(failedEvents.length)} />
-            <MetricCard label="Replays" subtext={`${me.plan === 'free' ? '3 max' : 'unlimited'}`} value={String(me.usage.replaysUsed)} />
+            <MetricCard label="Replays" subtext={`${me.plan === 'free' ? '3 replay/rescue max' : 'unlimited'}`} value={String(me.usage.replaysUsed)} />
           </div>
 
           {failedEvents.length > 0 ? (

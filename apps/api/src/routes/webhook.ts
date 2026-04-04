@@ -49,6 +49,21 @@ webhookRoutes.post('/:tokenHash', async (c) => {
 
   const parsed = stripeEvent as { id: string; type: string }
 
+  const stripeGeneratedAtHeader =
+    c.req.header('stripe-generated-at') ?? c.req.header('Stripe-Generated-At')
+
+  const parsedStripeGeneratedAt = stripeGeneratedAtHeader ? new Date(stripeGeneratedAtHeader) : null
+  const stripeGeneratedAt =
+    parsedStripeGeneratedAt && Number.isNaN(parsedStripeGeneratedAt.getTime())
+      ? null
+      : parsedStripeGeneratedAt
+
+  const receivedAt = new Date()
+
+  const ingestionLatencyMs = stripeGeneratedAt
+    ? receivedAt.getTime() - stripeGeneratedAt.getTime()
+    : null
+
   // 3. Idempotencia
   const [existing] = await db
     .select({ id: events.id })
@@ -101,6 +116,10 @@ webhookRoutes.post('/:tokenHash', async (c) => {
       sourceHeaders,
       destinationUrl: endpoint.destination,
       providerName: 'stripe',
+      stripeGeneratedAt,
+      ingestionLatencyMs,
+      signatureValid: true,
+      receivedAt,
       status:     'PENDING',
     })
     .returning({ id: events.id })
