@@ -29,6 +29,46 @@ async function getHasEndpoints(accessToken: string): Promise<boolean> {
   }
 }
 
+function getAccessTokenFromCookies(request: NextRequest): string | null {
+  const authCookies = request.cookies
+    .getAll()
+    .filter((cookie) => /-auth-token(\.\d+)?$/.test(cookie.name))
+
+  if (authCookies.length === 0) return null
+
+  const ordered = authCookies.sort((a, b) => {
+    const aMatch = a.name.match(/\.([0-9]+)$/)
+    const bMatch = b.name.match(/\.([0-9]+)$/)
+    const aIndex = aMatch ? Number.parseInt(aMatch[1], 10) : 0
+    const bIndex = bMatch ? Number.parseInt(bMatch[1], 10) : 0
+    return aIndex - bIndex
+  })
+
+  const rawValue = ordered.map((cookie) => cookie.value).join('')
+  const decodedValue = decodeURIComponent(rawValue)
+
+  try {
+    const parsed = JSON.parse(decodedValue) as unknown
+
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      'access_token' in parsed &&
+      typeof (parsed as { access_token: unknown }).access_token === 'string'
+    ) {
+      return (parsed as { access_token: string }).access_token
+    }
+
+    if (Array.isArray(parsed) && typeof parsed[0] === 'string') {
+      return parsed[0]
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
 const AUTH_ROUTES = new Set([
   '/login',
   '/signup',
@@ -60,10 +100,6 @@ export async function proxy(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
 
   const pathname = request.nextUrl.pathname
   const searchParams = request.nextUrl.searchParams
@@ -97,14 +133,17 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (user.email_confirmed_at && pathname === '/dashboard' && session?.access_token) {
+  if (user.email_confirmed_at && pathname === '/dashboard') {
     const createdAtMs = user.created_at ? new Date(user.created_at).getTime() : Number.NaN
     const isRecentlyCreated = Number.isFinite(createdAtMs) && Date.now() - createdAtMs < 10 * 60 * 1000
     const isNewUser = isRecentlyCreated || searchParams.get('new') === 'true'
 
     if (isNewUser) {
-      const hasEndpoints = await getHasEndpoints(session.access_token)
-      if (hasEndpoints) return supabaseResponse
+      const accessToken = getAccessTokenFromCookies(request)
+      if (accessToken) {
+        const hasEndpoints = await getHasEndpoints(accessToken)
+        if (hasEndpoints) return supabaseResponse
+      }
 
       const url = request.nextUrl.clone()
       url.pathname = '/onboarding'

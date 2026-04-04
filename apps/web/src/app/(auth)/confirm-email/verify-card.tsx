@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Mail } from 'lucide-react'
+import { Info, Loader2, Mail } from 'lucide-react'
 import { createClient } from '../../../lib/supabase/client'
 import { AuthPanel } from '../_components/auth-panel'
 
@@ -17,7 +17,7 @@ export function ConfirmEmailCard() {
   const [cooldown, setCooldown] = useState(COOLDOWN_SECONDS)
   const [isResending, setIsResending] = useState(false)
   const [isChecking, setIsChecking] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState('')
   const [message, setMessage] = useState<string | null>(null)
 
   const isNewUser =
@@ -38,7 +38,7 @@ export function ConfirmEmailCard() {
         setEmail(user.email)
       }
     })()
-  }, [supabase])
+  }, [])
 
   useEffect(() => {
     const cooldownInterval = window.setInterval(() => {
@@ -52,32 +52,110 @@ export function ConfirmEmailCard() {
     router.replace(isNewUser ? '/dashboard?new=true' : '/dashboard')
   }
 
-  async function checkEmailConfirmed() {
+  async function handleConfirmedClick() {
     setIsChecking(true)
-    setError(null)
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession()
+    setError('')
+
+    const pendingEmail = sessionStorage.getItem('pending_confirmation_email')
+    const password = sessionStorage.getItem('pending_confirmation_password')
+
+    if (!pendingEmail || !password) {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (session) {
+        sessionStorage.removeItem('pending_confirmation_email')
+        sessionStorage.removeItem('pending_confirmation_password')
+        await routeAfterConfirm()
+        return
+      }
+
+      setError('Please go back to login and sign in with your email and password.')
+      setIsChecking(false)
+      return
+    }
+
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      email: pendingEmail,
+      password,
+    })
+
+    if (signInError) {
+      const normalizedMessage = signInError.message.toLowerCase()
+
+      if (
+        normalizedMessage.includes('email not confirmed') ||
+        normalizedMessage.includes('not confirmed')
+      ) {
+        setError("Your email isn't confirmed yet. Check your inbox and click the link, then try again.")
+        setIsChecking(false)
+        return
+      }
+
+      if (
+        normalizedMessage.includes('invalid login') ||
+        normalizedMessage.includes('invalid credentials')
+      ) {
+        sessionStorage.removeItem('pending_confirmation_email')
+        sessionStorage.removeItem('pending_confirmation_password')
+        setError('Something went wrong. Please log in manually.')
+        setIsChecking(false)
+        return
+      }
+
+      setError(signInError.message)
+      setIsChecking(false)
+      return
+    }
+
+    if (data.session) {
+      sessionStorage.removeItem('pending_confirmation_email')
+      sessionStorage.removeItem('pending_confirmation_password')
+      await routeAfterConfirm()
+      return
+    }
+
+    setError('Something went wrong. Please try logging in manually.')
     setIsChecking(false)
-
-    if (sessionError || !session?.user) {
-      setError('No active session found. Log in again after confirming your email.')
-      return
-    }
-
-    if (!session.user.email_confirmed_at) {
-      setMessage('Email not confirmed yet. Please check your inbox.')
-      return
-    }
-
-    await routeAfterConfirm()
   }
+
+  useEffect(() => {
+    const pendingEmail = sessionStorage.getItem('pending_confirmation_email')
+    const password = sessionStorage.getItem('pending_confirmation_password')
+
+    if (!pendingEmail || !password) return
+
+    let attempts = 0
+    const MAX_ATTEMPTS = 20
+
+    const interval = window.setInterval(async () => {
+      attempts += 1
+      if (attempts > MAX_ATTEMPTS) {
+        window.clearInterval(interval)
+        return
+      }
+
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: pendingEmail,
+        password,
+      })
+
+      if (data.session && !signInError) {
+        window.clearInterval(interval)
+        sessionStorage.removeItem('pending_confirmation_email')
+        sessionStorage.removeItem('pending_confirmation_password')
+        await routeAfterConfirm()
+      }
+    }, 4000)
+
+    return () => window.clearInterval(interval)
+  }, [])
 
   async function resendEmail() {
     if (cooldown > 0 || !email) return
     setIsResending(true)
-    setError(null)
+    setError('')
     setMessage(null)
 
     const { error: resendError } = await supabase.auth.resend({
@@ -100,7 +178,7 @@ export function ConfirmEmailCard() {
   }
 
   return (
-    <AuthPanel title="Check your inbox" subtitle="Confirm your email to continue.">
+    <AuthPanel title="Check your inbox" subtitle={`We sent a confirmation link to ${email || 'your email'}.`}>
       <div className="space-y-4">
         <div className="grid place-items-center">
           <div className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[#1a1a1a]">
@@ -108,19 +186,32 @@ export function ConfirmEmailCard() {
           </div>
         </div>
 
-        <p className="text-center text-sm text-[#a1a1aa]">
-          We sent a confirmation link to <span className="text-white">{email || 'your email'}</span>
-        </p>
+        <p className="text-center text-sm text-[#a1a1aa]">Click the link on any device. Your session will start here automatically.</p>
+
+        <div className="mt-4 flex items-start gap-3 rounded-xl border border-white/6 bg-white/3 p-4 text-left">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
+          <p className="text-xs leading-relaxed text-zinc-500">
+            Confirming on your phone? No problem. Once you click the link, this page will log you in automatically
+            within a few seconds.
+          </p>
+        </div>
 
         <button
           className="h-11 w-full rounded-lg bg-[#22c55e] text-sm font-medium text-[#031108]"
           disabled={isChecking}
           onClick={() => {
-            void checkEmailConfirmed()
+            void handleConfirmedClick()
           }}
           type="button"
         >
-          {isChecking ? 'Checking...' : "I've confirmed my email"}
+          {isChecking ? (
+            <span className="inline-flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Checking...
+            </span>
+          ) : (
+            "I've confirmed my email →"
+          )}
         </button>
 
         <button
@@ -131,7 +222,11 @@ export function ConfirmEmailCard() {
           }}
           type="button"
         >
-          {isResending ? 'Resending...' : cooldown > 0 ? `Resend email in ${cooldown}s` : 'Resend email'}
+          {isResending
+            ? 'Resending...'
+            : cooldown > 0
+              ? `Resend confirmation email in ${cooldown}s`
+              : 'Resend confirmation email'}
         </button>
 
         <Link className="block text-center text-sm text-[#a1a1aa] hover:text-white" href="/login">
@@ -139,7 +234,12 @@ export function ConfirmEmailCard() {
         </Link>
 
         {message ? <p className="text-sm text-green-300">{message}</p> : null}
-        {error ? <p className="text-sm text-[#ef4444]">{error}</p> : null}
+        {error ? <p className="mt-3 text-center text-sm text-red-400">{error}</p> : null}
+        {error.toLowerCase().includes('log in manually') ? (
+          <a className="mt-1 block text-center text-sm text-zinc-400 underline" href="/login">
+            Go to login →
+          </a>
+        ) : null}
       </div>
     </AuthPanel>
   )

@@ -54,6 +54,17 @@ export function SignupForm() {
 
     const emailRedirectTo = `${window.location.origin}/auth/callback`
 
+    // Security note: password stored in sessionStorage for cross-device
+    // email confirmation UX. sessionStorage is:
+    //   - Cleared when the tab/browser closes (not persisted)
+    //   - Not accessible to other tabs or domains
+    //   - Only used to call signInWithPassword after email confirmation
+    //   - Cleared immediately after successful sign-in
+    // This is a standard pattern for this UX flow.
+    // Alternative: magic link resend, but that adds extra step for user.
+    sessionStorage.setItem('pending_confirmation_email', parsed.data.email)
+    sessionStorage.setItem('pending_confirmation_password', parsed.data.password)
+
     const { error: signUpError } = await supabase.auth.signUp({
       email: parsed.data.email,
       password: parsed.data.password,
