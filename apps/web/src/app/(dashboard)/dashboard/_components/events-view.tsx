@@ -276,7 +276,7 @@ export function EventsView() {
           </button>
           {showEndpointFilter ? (
             <div className="absolute right-0 z-20 mt-2 w-64 rounded-2xl border border-white/10 bg-black/90 p-3 text-xs text-zinc-200 shadow-[0_12px_30px_rgba(0,0,0,0.5)]">
-              <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-500">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
                 All endpoints
               </p>
               <div className="max-h-48 space-y-1 overflow-auto pr-1">
@@ -417,7 +417,7 @@ export function EventsView() {
             >
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0 space-y-2">
-                  <p className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+                  <p className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-wider text-zinc-500">
                     <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[10px] font-semibold text-zinc-200">
                       {endpointName}
                     </span>
@@ -482,7 +482,7 @@ export function EventsView() {
 
               <div className="mt-3 rounded-xl border border-white/10 bg-black/30 p-3">
                 <div className="mb-2 flex items-center justify-between">
-                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">Retry timeline</p>
+                  <p className="text-xs font-medium uppercase tracking-wider text-zinc-400">Retry timeline</p>
                   <button
                     className="text-xs text-zinc-400 underline hover:text-zinc-200"
                     onClick={(eventClick) => {
@@ -551,14 +551,14 @@ export function EventsView() {
                           <CopyToClipboard
                             text={latestAttempt.responseBody ?? latestAttempt.error ?? ''}
                             label="Copy response"
-                            className="inline-flex items-center gap-1 text-[11px] text-zinc-300 underline hover:text-zinc-100"
+                            className="inline-flex items-center gap-1 text-xs text-zinc-300 underline hover:text-zinc-100"
                             iconClassName="h-3 w-3"
                           />
                         ) : null}
                       </div>
                       <p className={`mt-1 ${latestTextClass}`}>Status: {latestAttempt.status ?? 'No status'}</p>
                       {latestAttempt.responseBody ? (
-                        <pre className={`mt-2 max-h-40 overflow-auto rounded-md border border-white/10 bg-black/40 p-2 text-[11px] ${latestTextClass}`}>
+                        <pre className={`mt-2 max-h-40 overflow-auto rounded-md border border-white/10 bg-black/40 p-2 text-xs ${latestTextClass}`}>
                           {latestAttempt.responseBody}
                         </pre>
                       ) : latestAttempt.error ? (
@@ -568,7 +568,7 @@ export function EventsView() {
                   ) : null}
 
                   <div className="rounded-lg border border-white/10 bg-black/25 p-2 text-xs text-zinc-300">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400">Request journey</p>
+                    <p className="text-xs font-medium uppercase tracking-wider text-zinc-400">Request journey</p>
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
                       <span className="rounded-md bg-black/45 px-2 py-1">{event.providerName ?? 'Stripe'}</span>
                       <ArrowRight className="h-3.5 w-3.5 text-zinc-500" />
@@ -576,11 +576,11 @@ export function EventsView() {
                       <ArrowRight className={`h-3.5 w-3.5 ${flowLastLegClass}`} />
                       <span className={`max-w-[280px] truncate rounded-md bg-black/45 px-2 py-1 ${flowLastLegClass}`}>{destination}</span>
                     </div>
-                    <p className="mt-2 text-[11px] uppercase tracking-[0.14em] text-zinc-400">Received at</p>
+                    <p className="mt-2 text-xs uppercase tracking-wider text-zinc-400">Received at</p>
                     <p className="mt-1 text-xs text-zinc-400">{new Date(event.receivedAt).toLocaleString()}</p>
-                    <p className="mt-2 text-[11px] uppercase tracking-[0.14em] text-zinc-400">Source headers</p>
+                    <p className="mt-2 text-xs uppercase tracking-wider text-zinc-400">Source headers</p>
                     {event.sourceHeaders ? (
-                      <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-white/10 bg-black/45 p-2 text-[11px] text-zinc-200">
+                      <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-white/10 bg-black/45 p-2 text-xs text-zinc-200">
                         {JSON.stringify(event.sourceHeaders, null, 2)}
                       </pre>
                     ) : (
@@ -589,14 +589,14 @@ export function EventsView() {
                   </div>
 
                   <div className="rounded-lg border border-white/10 bg-black/25 p-2 text-xs text-zinc-300">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-400">Metadata</p>
+                    <p className="text-xs font-medium uppercase tracking-wider text-zinc-400">Metadata</p>
                     <p className="mt-1 text-xs text-zinc-400">Perspectify ID: <span className="text-zinc-100">{event.id}</span></p>
                     <p className="mt-1 text-xs text-zinc-400">Payload size: <span className="text-zinc-100">{formatBytes(event.payloadSize)}</span></p>
                   </div>
 
                   <div>
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">Payload</p>
+                      <p className="text-xs font-medium uppercase tracking-wider text-zinc-400">Payload</p>
                       <CopyToClipboard
                         text={payloadText}
                         label="Copy JSON"

@@ -28,7 +28,7 @@ export function SlideOver({
         className={`fixed right-0 top-0 z-50 h-full w-full max-w-[480px] border-l border-white/10 bg-[#111111] transition-transform duration-200 ease-in-out ${open ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <header className="flex h-14 items-center justify-between border-b border-white/10 px-4">
-          <h2 className="font-display text-sm uppercase tracking-[0.16em] text-[#ffffff]">{title}</h2>
+          <h2 className="font-display text-sm uppercase tracking-wider text-[#ffffff]">{title}</h2>
           <button
             className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-[#ffffff] transition-colors duration-200 ease-in-out hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
             onClick={onClose}

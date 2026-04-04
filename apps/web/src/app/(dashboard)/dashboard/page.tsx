@@ -94,7 +94,7 @@ function WaitingForFirstEvent({ endpointItems }: { endpointItems: Array<{ name: 
 
           <div className="overflow-hidden rounded-lg border border-white/10 bg-[#0b0b0b]">
             <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
-              <p className="text-[11px] uppercase tracking-[0.1em] text-zinc-400">Command line</p>
+              <p className="text-xs uppercase tracking-wide text-zinc-400">Command line</p>
               <div className="relative">
                 <button
                   aria-label="Copy commands"
@@ -107,7 +107,7 @@ function WaitingForFirstEvent({ endpointItems }: { endpointItems: Array<{ name: 
                   <Copy className="h-3.5 w-3.5" />
                 </button>
                 {copied ? (
-                  <span className="pointer-events-none absolute right-0 top-8 whitespace-nowrap rounded-md border border-emerald-400/30 bg-emerald-500/15 px-2 py-1 text-[11px] text-emerald-200">
+                  <span className="pointer-events-none absolute right-0 top-8 whitespace-nowrap rounded-md border border-emerald-400/30 bg-emerald-500/15 px-2 py-1 text-xs text-emerald-200">
                     Copied
                   </span>
                 ) : null}

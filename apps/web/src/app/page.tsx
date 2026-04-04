@@ -79,7 +79,7 @@ export default async function HomePage() {
             />
 
             <div className="relative z-10 mx-auto max-w-[820px]">
-              <p className="animate-[fade-up_450ms_ease_0.05s_both] text-sm font-medium tracking-[0.01em] text-[#ff6b6b]">
+              <p className="animate-[fade-up_450ms_ease_0.05s_both] text-sm font-medium tracking-wide text-[#ff6b6b]">
                 Right now, someone just lost a payment they&apos;ll never recover.
               </p>
               <div className="mt-4 inline-flex animate-[fade-up_450ms_ease_0.1s_both] items-center gap-2 rounded-full border border-[#22c55e]/[0.22] bg-[#22c55e]/[0.08] px-3.5 py-1.5">
@@ -89,13 +89,13 @@ export default async function HomePage() {
                 </span>
               </div>
 
-              <h1 className="mt-8 animate-[fade-up_500ms_ease_0.22s_both] font-display text-[clamp(38px,7.5vw,80px)] font-extrabold leading-[1.04] tracking-[-2px] text-white">
+              <h1 className="mt-8 animate-[fade-up_500ms_ease_0.22s_both] font-display text-[clamp(38px,7.5vw,80px)] font-extrabold leading-[1.04] tracking-tight text-white">
                 Your Stripe payments fire.
                 <br />
                 <span className="text-[#22c55e]">Zapier and Make drop them.</span>
               </h1>
 
-              <p className="mx-auto mt-6 animate-[fade-up_500ms_ease_0.38s_both] text-[clamp(15px,2vw,19px)] font-light leading-[1.65] text-[#a1a1aa]">
+              <p className="mx-auto mt-6 animate-[fade-up_500ms_ease_0.38s_both] text-[clamp(15px,2vw,19px)] font-light leading-relaxed text-[#a1a1aa]">
                 A customer pays. Zapier times out. Make hits its limit.
                 <br />
                 The event disappears - no alert, no retry, no trace.
@@ -116,7 +116,7 @@ export default async function HomePage() {
               </div>
 
               <div className="mt-14 animate-[fade-up_500ms_ease_0.66s_both]">
-                <p className="mb-4 text-[11px] uppercase tracking-[0.22em] text-zinc-500">
+                <p className="mb-4 text-xs uppercase tracking-wider text-zinc-500">
                   Works with
                 </p>
                 <div className="flex flex-wrap items-center justify-center gap-3">
@@ -132,15 +132,15 @@ export default async function HomePage() {
           </section>
 
           <section className="mx-auto max-w-[1024px] px-6 py-24" id="problem">
-            <p className="text-center text-[11px] uppercase tracking-[0.22em] text-zinc-500">
+            <p className="text-center text-xs uppercase tracking-wider text-zinc-500">
               THE PROBLEM
             </p>
-            <h2 className="mt-3 text-center font-display text-[clamp(26px,4vw,44px)] font-bold leading-[1.1] tracking-[-1px]">
+            <h2 className="mt-3 text-center font-display text-[clamp(26px,4vw,44px)] font-bold leading-[1.1] tracking-tight">
               Zapier failed. Make hit its limit.
               <br />
               Your Stripe payment is gone.
             </h2>
-            <p className="mx-auto mt-4 max-w-[480px] text-center text-base font-light leading-[1.65] text-zinc-400">
+            <p className="mx-auto mt-4 max-w-[480px] text-center text-base font-light leading-relaxed text-zinc-400">
               A customer paid. You never knew. They never got access.
               Three days later they filed a chargeback.
               That&apos;s what a silent webhook failure looks like - and you wouldn&apos;t know it happened until it&apos;s too late.
@@ -176,15 +176,15 @@ export default async function HomePage() {
 
           <section className="border-y border-white/10 bg-[#111111] px-6 py-24" id="how">
             <div className="mx-auto max-w-[1024px]">
-              <p className="text-center text-[11px] uppercase tracking-[0.22em] text-zinc-500">
+              <p className="text-center text-xs uppercase tracking-wider text-zinc-500">
                 SETUP
               </p>
-              <h2 className="mt-3 text-center font-display text-[clamp(26px,4vw,44px)] font-bold leading-[1.1] tracking-[-1px]">
+              <h2 className="mt-3 text-center font-display text-[clamp(26px,4vw,44px)] font-bold leading-[1.1] tracking-tight">
                 Replace one URL in Stripe.
                 <br />
                 That&apos;s it.
               </h2>
-              <p className="mx-auto mt-4 max-w-[420px] text-center text-base font-light leading-[1.65] text-zinc-400">
+              <p className="mx-auto mt-4 max-w-[420px] text-center text-base font-light leading-relaxed text-zinc-400">
                 No code. No Zapier zap to update. No Make scenario to touch.
                 Just swap the endpoint.
               </p>
@@ -218,13 +218,13 @@ export default async function HomePage() {
 
           <section className="px-6 py-24" id="pricing">
             <div className="mx-auto max-w-[800px]">
-              <p className="text-center text-[11px] uppercase tracking-[0.22em] text-zinc-500">
+              <p className="text-center text-xs uppercase tracking-wider text-zinc-500">
                 PRICING
               </p>
-              <h2 className="mt-3 text-center font-display text-[clamp(26px,4vw,44px)] font-bold leading-[1.1] tracking-[-1px]">
+              <h2 className="mt-3 text-center font-display text-[clamp(26px,4vw,44px)] font-bold leading-[1.1] tracking-tight">
                 Simple, honest pricing.
               </h2>
-              <p className="mt-4 text-center text-base font-light leading-[1.65] text-zinc-400">
+              <p className="mt-4 text-center text-base font-light leading-relaxed text-zinc-400">
                 Start free. Upgrade when you need more. No surprise bills.
               </p>
 
@@ -237,8 +237,8 @@ export default async function HomePage() {
 
           <section className="px-6 pb-24" id="survey">
             <div className="mx-auto max-w-[800px] rounded-2xl border border-[#22c55e]/20 bg-[#111111] p-8 text-center md:p-10">
-              <p className="text-[11px] uppercase tracking-[0.22em] text-[#22c55e]">FINAL STEP</p>
-              <h2 className="mt-3 font-display text-3xl font-bold tracking-[-0.8px]">
+              <p className="text-xs uppercase tracking-wider text-[#22c55e]">FINAL STEP</p>
+              <h2 className="mt-3 font-display text-3xl font-bold tracking-tight">
                 Protect your next payment now.
               </h2>
               <p className="mx-auto mt-3 max-w-[460px] text-zinc-400">
@@ -258,7 +258,7 @@ export default async function HomePage() {
           <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 sm:flex-row">
             <div className="inline-flex items-center gap-2.5">
               <span className="h-2 w-2 rounded-full bg-[#22c55e] shadow-[0_0_10px_rgba(34,197,94,0.6)]" />
-              <span className="font-display text-[18px] font-bold tracking-[-0.4px] text-white">Perspectify</span>
+              <span className="font-display text-lg font-bold tracking-tight text-white">Perspectify</span>
             </div>
             <p className="text-sm text-zinc-500">Revenue insurance for no-code builders</p>
             <p className="text-sm text-zinc-500">© 2025 Perspectify</p>
@@ -336,11 +336,11 @@ function StepCard({
     <article
       className={`border-white/10 p-9 transition hover:bg-white/[0.02] ${withoutBorder ? '' : 'border-b md:border-b-0 md:border-r'}`}
     >
-      <p className="mb-6 font-display text-5xl font-black tracking-[-2px] text-white/10">{number}</p>
+      <p className="mb-6 font-display text-5xl font-extrabold tracking-tight text-white/10">{number}</p>
       <div className={`mb-5 inline-flex h-10 w-10 items-center justify-center rounded-xl ${iconBg}`}>
         {icon}
       </div>
-      <h3 className="mb-3 font-display text-lg font-bold tracking-[-0.3px] text-white">{title}</h3>
+      <h3 className="mb-3 font-display text-lg font-bold tracking-tight text-white">{title}</h3>
       <p className="text-sm font-light leading-relaxed text-zinc-400">{description}</p>
     </article>
   )

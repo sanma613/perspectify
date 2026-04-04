@@ -9,7 +9,7 @@ export function PlanBadge({ plan }: { plan: PlanId }) {
 
   return (
     <span
-      className={`inline-flex h-6 items-center rounded-full border px-2.5 text-[11px] font-display uppercase tracking-[0.16em] ${tone}`}
+      className={`inline-flex h-6 items-center rounded-full border px-2.5 text-xs font-display uppercase tracking-wider ${tone}`}
     >
       {label}
     </span>

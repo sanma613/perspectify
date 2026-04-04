@@ -26,7 +26,7 @@ export function LandingNav({ isAuthenticated }: { isAuthenticated: boolean }) {
       <div className="mx-auto flex h-full w-full max-w-6xl items-center justify-between px-6 md:px-8">
         <Link className="inline-flex items-center gap-2.5" href="/">
           <span className="h-2 w-2 rounded-full bg-[#22c55e] shadow-[0_0_10px_rgba(34,197,94,0.6)]" />
-          <span className="font-display text-[18px] font-bold tracking-[-0.4px] text-white">Perspectify</span>
+          <span className="font-display text-lg font-bold tracking-tight text-white">Perspectify</span>
         </Link>
 
         <div className="hidden items-center gap-7 md:flex">
@@ -54,9 +54,8 @@ export function LandingNav({ isAuthenticated }: { isAuthenticated: boolean }) {
                 Sign in
               </Link>
               <Link
-                className="rounded-lg bg-green-500 px-4 py-2 text-sm font-bold text-black transition-all hover:-translate-y-[1px] hover:opacity-90"
+                className="font-display rounded-lg bg-green-500 px-4 py-2 text-sm font-bold text-black transition-all hover:-translate-y-[1px] hover:opacity-90"
                 href="/signup"
-                style={{ fontFamily: 'var(--font-display)' }}
               >
                 Start free →
               </Link>
@@ -77,9 +76,8 @@ export function LandingNav({ isAuthenticated }: { isAuthenticated: boolean }) {
                 <LogIn className="text-zinc-400" size={20} />
               </Link>
               <Link
-                className="flex min-h-[44px] items-center rounded-lg bg-green-500 px-3 py-2 text-xs font-bold text-black"
+                className="font-display flex min-h-[44px] items-center rounded-lg bg-green-500 px-3 py-2 text-xs font-bold text-black"
                 href="/signup"
-                style={{ fontFamily: 'var(--font-display)' }}
               >
                 Start free →
               </Link>

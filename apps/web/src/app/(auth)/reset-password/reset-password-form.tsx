@@ -61,7 +61,7 @@ export function ResetPasswordForm() {
   return (
     <form className="space-y-4" onKeyDown={handleEnterAdvance} onSubmit={onSubmit}>
       <label className="block space-y-2 text-base">
-        <span className="font-display text-[11px] uppercase tracking-[0.14em] text-[#a1a1aa]">New password</span>
+        <span className="font-display text-xs uppercase tracking-wider text-[#a1a1aa]">New password</span>
         <div className="relative">
           <input
             autoComplete="new-password"
@@ -86,7 +86,7 @@ export function ResetPasswordForm() {
       </label>
 
       <label className="block space-y-2 text-base">
-        <span className="font-display text-[11px] uppercase tracking-[0.14em] text-[#a1a1aa]">Confirm password</span>
+        <span className="font-display text-xs uppercase tracking-wider text-[#a1a1aa]">Confirm password</span>
         <div className="relative">
           <input
             autoComplete="new-password"

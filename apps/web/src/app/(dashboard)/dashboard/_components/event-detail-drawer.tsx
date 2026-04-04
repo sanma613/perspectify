@@ -316,7 +316,7 @@ function OverviewTab({
       </div>
 
       <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-        <p className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">Delivery timeline</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Delivery timeline</p>
         {attempts.length > 0 ? (
           <ul className="mt-2 space-y-2 text-xs text-zinc-300">
             {attempts.map((attempt) => (
@@ -394,7 +394,7 @@ function PayloadTab({
       <details className="rounded-lg border border-white/10 bg-black/25 p-3" open>
         <summary className="cursor-pointer text-xs text-zinc-300">Source headers</summary>
         {sourceHeaders ? (
-          <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-white/10 bg-black/45 p-2 text-[11px] text-zinc-200">
+          <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-white/10 bg-black/45 p-2 text-xs text-zinc-200">
             {JSON.stringify(sourceHeaders, null, 2)}
           </pre>
         ) : (
@@ -420,7 +420,7 @@ function ResponseTab({
       {loadingDetail ? <p className="text-xs text-zinc-500">Loading response...</p> : null}
 
       <div className="rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-zinc-200">
-        <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Latest attempt</p>
+        <p className="text-xs uppercase tracking-wider text-zinc-500">Latest attempt</p>
         <p className="mt-1 text-sm text-zinc-100">Status: {status ?? 'No status'}</p>
         <p className="mt-1 text-xs text-zinc-400">{statusHelperText(status)}</p>
       </div>
@@ -439,7 +439,7 @@ function ResponseTab({
 function MetaItem({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">{label}</p>
+      <p className="text-xs uppercase tracking-wider text-zinc-500">{label}</p>
       <p className="mt-1 break-all text-sm text-zinc-100">{value}</p>
     </div>
   )

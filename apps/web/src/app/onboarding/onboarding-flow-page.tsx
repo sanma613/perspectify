@@ -534,7 +534,7 @@ export function OnboardingFlowPage() {
         <div className="mx-auto flex h-full w-full max-w-5xl items-center justify-between">
           <Link className="inline-flex items-center gap-2.5" href="/">
             <span className="h-2 w-2 rounded-full bg-[#22c55e] shadow-[0_0_10px_rgba(34,197,94,0.6)]" />
-            <span className="font-display text-lg font-bold tracking-[-0.4px] text-white">Perspectify</span>
+            <span className="font-display text-lg font-bold tracking-tight text-white">Perspectify</span>
           </Link>
           <div className="text-sm text-zinc-500">
             <Link className="hidden md:inline transition hover:text-white" href="/dashboard">
@@ -797,11 +797,11 @@ function StepOne({
 
   return (
     <section onKeyDown={onEnterContinue}>
-      <p className="text-xs uppercase tracking-[0.22em] text-zinc-500">Step 1 of 3</p>
-      <h1 className="mt-2 font-display text-[22px] font-bold tracking-[-0.5px] text-white md:text-[28px]">
+      <p className="text-xs uppercase tracking-wider text-zinc-500">Step 1 of 3</p>
+      <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-white md:text-3xl">
         Create a webhook in Zapier or Make
       </h1>
-      <p className="mt-3 text-[15px] leading-[1.6] text-zinc-400">
+      <p className="mt-3 text-sm leading-relaxed text-zinc-400">
         This is where your Stripe payments will be delivered.
         Perspectify will send every captured event here.
       </p>
@@ -848,7 +848,7 @@ function StepOne({
                     type="button"
                   >
                     <span className="inline-flex items-start gap-3 text-sm text-zinc-300">
-                      <span className="font-display text-[13px] font-bold text-[#22c55e]">{item.toString().padStart(2, '0')}</span>
+                      <span className="font-display text-xs font-bold text-[#22c55e]">{item.toString().padStart(2, '0')}</span>
                       <span>{line}</span>
                     </span>
                     <ChevronDown className={`h-4 w-4 text-zinc-500 transition ${isOpen ? 'rotate-180' : ''}`} />
@@ -865,23 +865,23 @@ function StepOne({
             <div className="space-y-4">
               {stepsForTool.map((line, index) => (
                 <div className="flex items-start gap-4" key={line}>
-                  <span className="w-6 shrink-0 font-display text-[13px] font-bold text-[#22c55e]">
+                  <span className="w-6 shrink-0 font-display text-xs font-bold text-[#22c55e]">
                     {(index + 1).toString().padStart(2, '0')}
                   </span>
-                  <p className="text-sm leading-[1.5] text-zinc-300">{line}</p>
+                  <p className="text-sm leading-normal text-zinc-300">{line}</p>
                 </div>
               ))}
             </div>
             <div className={`mt-4 flex items-start gap-2 rounded-lg p-4 ${tool === 'bubble' ? 'border border-amber-500/25 bg-amber-500/[0.08]' : 'border border-[#22c55e]/20 bg-[#22c55e]/[0.06]'}`}>
               <Info className={`mt-0.5 h-4 w-4 shrink-0 ${tool === 'bubble' ? 'text-amber-400' : 'text-[#22c55e]'}`} />
-              <p className="text-[13px] text-zinc-300">{callout}</p>
+              <p className="text-xs text-zinc-300">{callout}</p>
             </div>
           </div>
         )}
       </div>
 
       <div className="mt-8">
-        <label className="mb-2 block text-[13px] text-zinc-400">Your Zapier, Make, or Bubble webhook URL</label>
+        <label className="mb-2 block text-xs text-zinc-400">Your Zapier, Make, or Bubble webhook URL</label>
         <input
           className={`w-full rounded-xl border bg-[#1a1a1a] px-4 py-3 text-sm text-white outline-none ${
             destinationError
@@ -960,17 +960,17 @@ function StepTwo({
 
   return (
     <section onKeyDown={onEnterContinue}>
-      <p className="text-xs uppercase tracking-[0.22em] text-zinc-500">Step 2 of 3</p>
-      <h1 className="mt-2 font-display text-[22px] font-bold tracking-[-0.5px] text-white md:text-[28px]">
+      <p className="text-xs uppercase tracking-wider text-zinc-500">Step 2 of 3</p>
+      <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-white md:text-3xl">
         Set up your Perspectify endpoint
       </h1>
-      <p className="mt-3 text-[15px] leading-[1.6] text-zinc-400">
+      <p className="mt-3 text-sm leading-relaxed text-zinc-400">
         Give it a name and confirm your destination.
       </p>
 
       <div className="mt-8 space-y-5">
         <div>
-          <label className="mb-2 block text-[13px] text-zinc-400">Where to deliver your events</label>
+          <label className="mb-2 block text-xs text-zinc-400">Where to deliver your events</label>
           <div className="relative">
             <CheckCircle2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#22c55e]" />
             {isDestinationEditable ? (
@@ -1005,7 +1005,7 @@ function StepTwo({
         </div>
 
         <div>
-          <label className="mb-1 block text-[13px] text-zinc-400">Give this endpoint a name</label>
+          <label className="mb-1 block text-xs text-zinc-400">Give this endpoint a name</label>
           <p className="mb-2 text-xs text-zinc-600">Something that helps you identify it later.</p>
           <input
             className="w-full rounded-xl border border-white/10 bg-[#1a1a1a] px-4 py-3 text-sm text-white outline-none focus:border-white/20"
@@ -1033,7 +1033,7 @@ function StepTwo({
 
       {stepTwoError ? (
         <div className="mt-4 rounded-lg border border-[#ef4444]/25 bg-[#ef4444]/[0.08] p-4">
-          <p className="text-[13px] text-zinc-300">{stepTwoError}</p>
+          <p className="text-xs text-zinc-300">{stepTwoError}</p>
           {stepTwoError.includes('endpoint limit') ? (
             <Link className="mt-2 inline-block text-sm text-zinc-400 underline" href="/dashboard/endpoints">
               Go to endpoints
@@ -1105,11 +1105,11 @@ function StepThree({
 
   return (
     <section onKeyDown={onEnterSubmit}>
-      <p className="text-xs uppercase tracking-[0.22em] text-zinc-500">Step 3 of 3</p>
-      <h1 className="mt-2 font-display text-[22px] font-bold tracking-[-0.5px] text-white md:text-[28px]">
+      <p className="text-xs uppercase tracking-wider text-zinc-500">Step 3 of 3</p>
+      <h1 className="mt-2 font-display text-2xl font-bold tracking-tight text-white md:text-3xl">
         Add Perspectify to Stripe
       </h1>
-      <p className="mt-3 text-[15px] leading-[1.6] text-zinc-400">
+      <p className="mt-3 text-sm leading-relaxed text-zinc-400">
         Paste your Perspectify URL into Stripe.
         This is the final step - takes about 2 minutes.
       </p>
@@ -1146,7 +1146,7 @@ function StepThree({
         <InstructionNumber number={3} title="After selecting 'Webhook endpoint', paste your Perspectify endpoint URL">
           <p className="mt-2 text-xs text-zinc-500">This URL is already generated. Paste this exact value in Stripe.</p>
           <div className="mt-2 flex gap-2">
-            <div className="h-11 flex-1 rounded-xl border border-green-500/30 bg-[#1a1a1a] px-3 font-mono text-xs text-zinc-200 cursor-text select-text truncate whitespace-nowrap leading-[44px] overflow-hidden">
+            <div className="flex h-11 flex-1 items-center truncate whitespace-nowrap overflow-hidden rounded-xl border border-green-500/30 bg-[#1a1a1a] px-3 font-mono text-xs leading-loose text-zinc-200 cursor-text select-text">
               {webhookUrl}
             </div>
             <button
@@ -1164,7 +1164,7 @@ function StepThree({
         <InstructionNumber number={4} title="Click 'Add endpoint' - Stripe will show your webhook secret">
           <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/[0.08] p-4">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-            <p className="text-[13px] text-zinc-300">
+            <p className="text-xs text-zinc-300">
               Copy the secret that starts with whsec_
             </p>
           </div>

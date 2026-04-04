@@ -128,7 +128,7 @@ function NavLinks({ onSelect }: { onSelect?: () => void }) {
             onClick={onSelect}
           >
             <Icon className="h-5 w-5" />
-            <span className="font-display uppercase tracking-[0.14em]">{item.label}</span>
+            <span className="font-display uppercase tracking-wider">{item.label}</span>
           </Link>
         )
       })}
@@ -177,7 +177,7 @@ function SidebarContent({ displayName, email, onSelect }: { displayName: string;
     <>
       <div>
         <div className="mb-8 px-6">
-          <p className="inline-flex h-6 items-center gap-2 font-display text-[12px] uppercase tracking-[0.24em] text-white">
+          <p className="inline-flex h-6 items-center gap-2 font-display text-xs uppercase tracking-wider text-white">
             <Image alt="Perspectify" className="h-4 w-4" height={16} src="/favicon.svg" width={16} />
             Perspectify
           </p>
@@ -239,7 +239,7 @@ function MobileTopBar({ displayName, email }: { displayName: string; email: stri
 
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-white/10 bg-[#111111]/[0.92] px-4 backdrop-blur-sm md:hidden">
-      <p className="inline-flex h-6 items-center gap-2 font-display text-[12px] uppercase tracking-[0.24em] text-white">
+      <p className="inline-flex h-6 items-center gap-2 font-display text-xs uppercase tracking-wider text-white">
         <Image alt="Perspectify" className="h-4 w-4" height={16} src="/favicon.svg" width={16} />
         Perspectify
       </p>
@@ -313,7 +313,7 @@ function TabletTopBar() {
       >
         {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
       </button>
-      <p className="font-display text-[12px] uppercase tracking-[0.24em] text-white">Perspectify</p>
+      <p className="font-display text-xs uppercase tracking-wider text-white">Perspectify</p>
       <div className="h-8 w-8 rounded-full bg-zinc-700" />
     </header>
   )

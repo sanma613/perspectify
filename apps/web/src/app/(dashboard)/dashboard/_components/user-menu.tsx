@@ -52,7 +52,7 @@ export function UserMenu({
         </span>
         <span className="truncate text-left">
           <span className="block text-sm font-medium text-zinc-100">{label}</span>
-          <span className="block text-[11px] text-zinc-500">Workspace owner</span>
+          <span className="block text-xs text-zinc-500">Workspace owner</span>
         </span>
         <ChevronUp className={`ml-auto h-4 w-4 text-zinc-500 transition ${open ? '' : 'rotate-180'}`} />
       </button>

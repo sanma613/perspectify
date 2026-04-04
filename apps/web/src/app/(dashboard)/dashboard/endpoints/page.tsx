@@ -329,13 +329,13 @@ export default function EndpointsPage() {
     return (
       <div className="space-y-3">
         <div className="rounded-lg border border-white/10 bg-black/30 p-3">
-          <p className="text-xs uppercase tracking-[0.12em] text-[#a1a1aa]">Destination</p>
+          <p className="text-xs uppercase tracking-wider text-[#a1a1aa]">Destination</p>
           <p className="mt-1 break-all text-sm text-white">{endpoint.destination}</p>
           <p className="mt-1 text-xs text-[#a1a1aa]">Wrong destination? Delete this endpoint and create a new one.</p>
         </div>
 
         <div>
-          <label className="mb-1 block text-xs uppercase tracking-[0.12em] text-[#a1a1aa]">Name</label>
+          <label className="mb-1 block text-xs uppercase tracking-wider text-[#a1a1aa]">Name</label>
           <input
             className={`h-11 w-full rounded-lg border bg-white/5 px-3 text-sm text-white placeholder:text-[#71717a] ${
               editNameError ? 'border-red-500/70' : 'border-white/10'
@@ -352,7 +352,7 @@ export default function EndpointsPage() {
         </div>
 
         <div>
-          <label className="mb-1 block text-xs uppercase tracking-[0.12em] text-[#a1a1aa]">Secret (optional)</label>
+          <label className="mb-1 block text-xs uppercase tracking-wider text-[#a1a1aa]">Secret (optional)</label>
           <div className="relative">
             <input
               className={`h-11 w-full rounded-lg border bg-white/5 px-3 pr-10 text-sm text-white placeholder:text-[#71717a] ${secretBorderClass}`}
@@ -414,16 +414,16 @@ export default function EndpointsPage() {
 
     return (
       <div>
-        <h2 className="font-display text-[18px] font-bold text-white">Delete this endpoint?</h2>
+        <h2 className="font-display text-lg font-bold text-white">Delete this endpoint?</h2>
 
-        <p className="mt-3 font-sans text-[14px] leading-relaxed text-zinc-300">
+        <p className="mt-3 font-sans text-sm leading-relaxed text-zinc-300">
           This will permanently delete <span className="font-medium text-white">{deleteEndpoint?.name}</span> and all{' '}
           <span className="font-medium text-red-400">{countLabel}</span> associated events. This cannot be undone.
         </p>
 
         <div className="mt-4 flex gap-3 rounded-lg border border-red-500/25 bg-red-500/8 p-4">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-          <p className="font-sans text-[13px] text-zinc-300">
+          <p className="font-sans text-xs text-zinc-300">
             Your Stripe webhook pointing to this URL will stop working immediately. Go to Stripe and update or disable
             it to avoid losing future payments.
           </p>
@@ -451,7 +451,7 @@ export default function EndpointsPage() {
             Cancel
           </button>
           <button
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-500 py-3 font-display text-[14px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-500 py-3 font-display text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
             disabled={!deleteConfirmed || deleteInProgress}
             onClick={() => {
               void confirmDelete()

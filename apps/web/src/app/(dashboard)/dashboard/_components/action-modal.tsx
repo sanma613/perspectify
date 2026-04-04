@@ -40,7 +40,7 @@ export function ActionModal({
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-amber-300">
+            <p className="inline-flex items-center gap-2 text-xs uppercase tracking-wider text-amber-300">
               <AlertTriangle className="h-3.5 w-3.5" />
               Attention
             </p>

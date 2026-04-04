@@ -98,7 +98,7 @@ export function SignupForm() {
         error={fieldErrors.email}
       />
       <label className="block space-y-2 text-base">
-        <span className="font-display text-[11px] uppercase tracking-[0.14em] text-[#a1a1aa]">Password</span>
+        <span className="font-display text-xs uppercase tracking-wider text-[#a1a1aa]">Password</span>
         <div className="relative">
           <input
             autoComplete="new-password"

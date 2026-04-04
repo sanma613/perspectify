@@ -198,7 +198,7 @@ export function EndpointsView() {
 
           <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
             <div className="flex items-center justify-between gap-2 px-1 py-1">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-zinc-300">Active endpoints</h3>
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-300">Active endpoints</h3>
               <span className="text-xs text-zinc-500">{endpointCounterLabel}</span>
             </div>
 
@@ -217,7 +217,7 @@ export function EndpointsView() {
                           <p className="font-medium text-zinc-100">{endpoint.name}</p>
                           <p className="mt-1 break-all text-sm text-zinc-400">{endpoint.destination}</p>
                         </div>
-                        <p className="rounded-full border border-white/10 bg-black/35 px-2 py-0.5 text-[11px] text-zinc-500">
+                        <p className="rounded-full border border-white/10 bg-black/35 px-2 py-0.5 text-xs text-zinc-500">
                           {endpoint.tokenPrefix}
                         </p>
                       </div>

@@ -339,7 +339,7 @@ export function DashboardOverview() {
           </button>
           {showEndpointFilter ? (
             <div className="absolute right-0 z-20 mt-2 w-64 rounded-2xl border border-white/10 bg-black/90 p-3 text-xs text-zinc-200 shadow-[0_12px_30px_rgba(0,0,0,0.5)]">
-              <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-500">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
                 All endpoints
               </p>
               <div className="max-h-48 space-y-1 overflow-auto pr-1">
@@ -426,9 +426,9 @@ export function DashboardOverview() {
                 <div className="flex min-w-0 gap-3">
                   <span className={`mt-2 h-2.5 w-2.5 shrink-0 rounded-full ${dotClass}`} />
                   <div className="min-w-0">
-                    <p className="truncate text-[15px] font-medium text-zinc-100">
+                    <p className="truncate text-sm font-medium text-zinc-100">
                       <span className="inline-flex flex-wrap items-center gap-2">
-                        <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[11px] font-semibold text-zinc-200">
+                        <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-xs font-semibold text-zinc-200">
                           {endpointName}
                         </span>
                         <span className="text-zinc-500">—</span>

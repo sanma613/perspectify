@@ -349,7 +349,7 @@ export default function SettingsPage() {
       {passwordSuccess ? <p className="text-sm text-green-400">{passwordSuccess}</p> : null}
 
       <section className="rounded-xl border border-white/10 bg-[#111111] p-4">
-        <h2 className="font-display text-sm uppercase tracking-[0.16em] text-[#a1a1aa]">Profile</h2>
+        <h2 className="font-display text-sm uppercase tracking-wider text-[#a1a1aa]">Profile</h2>
         <div className="mt-4 space-y-4">
           <div className="space-y-1 text-sm text-[#a1a1aa]">
             <p>Email</p>
@@ -439,7 +439,7 @@ export default function SettingsPage() {
       </section>
 
       <section className="rounded-xl border border-white/10 bg-[#111111] p-4">
-        <h2 className="font-display text-sm uppercase tracking-[0.16em] text-[#a1a1aa]">Current plan</h2>
+        <h2 className="font-display text-sm uppercase tracking-wider text-[#a1a1aa]">Current plan</h2>
         <div className="mt-3">
           <PlanBadge plan={me.plan} />
         </div>

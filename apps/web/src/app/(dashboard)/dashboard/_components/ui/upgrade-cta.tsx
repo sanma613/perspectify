@@ -273,7 +273,7 @@ export function PlanUsageBar({ used, limit, plan }: { used: number; limit: numbe
         <p className="text-sm text-white">Plan: {plan === 'starter' ? 'Starter' : 'Free'}</p>
         {isWarn ? <AlertCircle className="h-4 w-4 text-[#f59e0b]" /> : null}
       </div>
-      <p className="mt-3 text-xs uppercase tracking-[0.12em] text-[#a1a1aa]">Events this month</p>
+      <p className="mt-3 text-xs uppercase tracking-wider text-[#a1a1aa]">Events this month</p>
       <div className="mt-2 h-2 overflow-hidden rounded-full border border-white/10 bg-[#1a1a1a]">
         <div className={`h-full ${isLimit ? 'bg-[#ef4444]' : isWarn ? 'bg-[#f59e0b]' : 'bg-[#22c55e]'}`} style={{ width: `${percent}%` }} />
       </div>
@@ -302,7 +302,7 @@ export function PlanUsageBar({ used, limit, plan }: { used: number; limit: numbe
               ))}
             </div>
 
-            <p className="text-3xl font-bold text-white mt-6" style={{ fontFamily: 'var(--font-display)' }}>
+            <p className="mt-6 font-display text-3xl font-bold text-white">
               ${nextLimits.priceMonthly}
               <span className="text-sm text-zinc-500 font-normal">/mo</span>
             </p>
@@ -311,8 +311,7 @@ export function PlanUsageBar({ used, limit, plan }: { used: number; limit: numbe
               onClick={() => {
                 router.push('/dashboard/settings#upgrade')
               }}
-              className="w-full py-3 rounded-xl bg-green-500 text-black font-bold mt-4"
-              style={{ fontFamily: 'var(--font-display)' }}
+              className="mt-4 w-full rounded-xl bg-green-500 py-3 font-display font-bold text-black"
               type="button"
             >
               Upgrade to {nextPlanId === 'starter' ? 'Starter' : nextPlanId} - ${nextLimits.priceMonthly}/mo
@@ -344,7 +343,7 @@ export function PlanUsageBar({ used, limit, plan }: { used: number; limit: numbe
                 ))}
               </div>
 
-              <p className="text-3xl font-bold text-white mt-6" style={{ fontFamily: 'var(--font-display)' }}>
+              <p className="mt-6 font-display text-3xl font-bold text-white">
                 ${nextLimits.priceMonthly}
                 <span className="text-sm text-zinc-500 font-normal">/mo</span>
               </p>
@@ -353,8 +352,7 @@ export function PlanUsageBar({ used, limit, plan }: { used: number; limit: numbe
                 onClick={() => {
                   router.push('/dashboard/settings#upgrade')
                 }}
-                className="w-full py-3 rounded-xl bg-green-500 text-black font-bold mt-4"
-                style={{ fontFamily: 'var(--font-display)' }}
+                className="mt-4 w-full rounded-xl bg-green-500 py-3 font-display font-bold text-black"
                 type="button"
               >
                 Upgrade to {nextPlanId === 'starter' ? 'Starter' : nextPlanId} - ${nextLimits.priceMonthly}/mo

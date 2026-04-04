@@ -20,8 +20,8 @@ export function MetricCard({
 
   return (
     <article className="rounded-xl border border-white/10 bg-[#111111] p-4">
-      <p className="font-display text-[11px] uppercase tracking-[0.18em] text-[#a1a1aa]">{label}</p>
-      <p className={`mt-2 font-display text-[32px] leading-none ${valueClass}`}>{value}</p>
+      <p className="font-display text-xs uppercase tracking-wider text-[#a1a1aa]">{label}</p>
+      <p className={`mt-2 font-display text-3xl leading-none ${valueClass}`}>{value}</p>
       {subtext ? <p className="mt-2 text-xs text-[#a1a1aa]">{subtext}</p> : null}
     </article>
   )
