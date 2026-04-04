@@ -143,6 +143,12 @@ export async function proxy(request: NextRequest) {
 
     if (isNewUser) {
       const accessToken = getAccessTokenFromCookies(request)
+      if (!accessToken) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/onboarding'
+        return NextResponse.redirect(url)
+      }
+
       if (accessToken) {
         const hasEndpoints = await getHasEndpoints(accessToken)
         if (!hasEndpoints) {
