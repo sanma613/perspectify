@@ -64,6 +64,20 @@
       "when": 1775400000000,
       "tag": "0009_forensic_traceability",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1775664000000,
+      "tag": "0010_onboarding_completed",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1775750400000,
+      "tag": "0011_user_email_confirmed_realtime",
+      "breakpoints": true
     }
   ]
 }

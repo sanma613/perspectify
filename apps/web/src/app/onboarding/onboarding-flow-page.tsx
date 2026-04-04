@@ -28,6 +28,7 @@ import { handleEnterAdvance } from '../../lib/forms/enter-navigation'
 import { usePasswordVisibility } from '../../hooks/use-password-visibility'
 import { useMobile } from '../../lib/hooks/use-mobile'
 import { ApiError, apiFetch, getApiBaseUrl } from '../../lib/http'
+import type { MeResponse } from '../../lib/api-types'
 
 type ToolName = 'zapier' | 'make' | 'bubble'
 type StepNumber = 1 | 2 | 3
@@ -130,12 +131,17 @@ export function OnboardingFlowPage() {
   }, [draftEndpointId])
 
   useEffect(() => {
-    async function guardExistingEndpoints() {
+    async function loadOnboardingContext() {
       try {
         const token = await getAccessToken()
-        const endpoints = await apiFetch<EndpointSummary[]>('/endpoints', token)
+        const [me, endpoints] = await Promise.all([
+          apiFetch<MeResponse>('/me', token),
+          apiFetch<EndpointSummary[]>('/endpoints', token),
+        ])
+
         setExistingEndpoints(endpoints)
-        if (endpoints.length > 0) {
+
+        if (me.onboardingCompleted) {
           router.replace('/dashboard')
         }
       } catch {
@@ -143,7 +149,7 @@ export function OnboardingFlowPage() {
       }
     }
 
-    void guardExistingEndpoints()
+    void loadOnboardingContext()
   }, [router])
 
   const existingEndpointNames = useMemo(
@@ -537,11 +543,11 @@ export function OnboardingFlowPage() {
             <span className="font-display text-lg font-bold tracking-tight text-white">Perspectify</span>
           </Link>
           <div className="text-sm text-zinc-500">
-            <Link className="hidden md:inline transition hover:text-white" href="/dashboard?skipOnboarding=1">
-              Already set up? Go to dashboard →
+            <Link className="hidden md:inline transition hover:text-white" href="/dashboard">
+              Go to dashboard →
             </Link>
-            <Link className="md:hidden text-sm text-zinc-500" href="/login">
-              Sign in
+            <Link className="md:hidden text-sm text-zinc-500" href="/dashboard">
+              Go to dashboard →
             </Link>
           </div>
         </div>

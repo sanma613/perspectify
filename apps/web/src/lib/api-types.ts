@@ -4,6 +4,7 @@ export interface MeResponse {
   id: string
   email: string
   plan: PlanId
+  onboardingCompleted: boolean
   limits: PlanLimits
   usage: {
     replaysUsed: number

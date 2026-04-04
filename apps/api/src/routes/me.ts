@@ -13,6 +13,7 @@ meRoutes.get('/', async (c) => {
       id: users.id,
       email: users.email,
       plan: users.plan,
+      onboardingCompleted: users.onboardingCompleted,
       freeReplaysUsed: users.freeReplaysUsed,
     })
     .from(users)
@@ -31,6 +32,7 @@ meRoutes.get('/', async (c) => {
         id: users.id,
         email: users.email,
         plan: users.plan,
+        onboardingCompleted: users.onboardingCompleted,
         freeReplaysUsed: users.freeReplaysUsed,
       })
 
@@ -41,6 +43,7 @@ meRoutes.get('/', async (c) => {
     id: row.id,
     email: row.email,
     plan: row.plan,
+    onboardingCompleted: row.onboardingCompleted,
     limits: getPlanLimits(row.plan),
     usage: {
       replaysUsed: Number(row.freeReplaysUsed ?? 0),

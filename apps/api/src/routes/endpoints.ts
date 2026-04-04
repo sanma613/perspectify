@@ -221,6 +221,13 @@ endpointsRoutes.post('/', async (c) => {
     throw error
   }
 
+  if (secret.length > 0) {
+    await db
+      .update(users)
+      .set({ onboardingCompleted: true })
+      .where(and(eq(users.id, userId), eq(users.onboardingCompleted, false)))
+  }
+
   return c.json(
     {
       id: endpoint.id,
@@ -307,6 +314,7 @@ endpointsRoutes.patch('/:id', async (c) => {
   } = {}
 
   let changed = false
+  let shouldMarkOnboardingCompleted = false
 
   if (typeof body.name === 'string') {
     const trimmedName = body.name.trim()
@@ -391,6 +399,8 @@ endpointsRoutes.patch('/:id', async (c) => {
     const nextSecret = body.secret.trim()
 
     if (nextSecret.length > 0) {
+      shouldMarkOnboardingCompleted = true
+
       if (!nextSecret.startsWith(SECRET_PREFIX)) {
         return c.json(
           {
@@ -424,6 +434,13 @@ endpointsRoutes.patch('/:id', async (c) => {
         changed = true
       }
     }
+  }
+
+  if (shouldMarkOnboardingCompleted) {
+    await db
+      .update(users)
+      .set({ onboardingCompleted: true })
+      .where(and(eq(users.id, userId), eq(users.onboardingCompleted, false)))
   }
 
   if (!changed) {

@@ -29,6 +29,35 @@ async function getHasEndpoints(accessToken: string): Promise<boolean> {
   }
 }
 
+async function getOnboardingCompleted(accessToken: string): Promise<boolean | null> {
+  try {
+    const response = await fetch(`${getApiBaseUrl()}/me`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(3000),
+    })
+
+    if (!response.ok) return null
+
+    const data = (await response.json()) as unknown
+    if (
+      data &&
+      typeof data === 'object' &&
+      'onboardingCompleted' in data &&
+      typeof (data as { onboardingCompleted: unknown }).onboardingCompleted === 'boolean'
+    ) {
+      return (data as { onboardingCompleted: boolean }).onboardingCompleted
+    }
+
+    return null
+  } catch {
+    // API hiccups should not lock authenticated users behind redirects.
+    return null
+  }
+}
+
 function getAccessTokenFromCookies(request: NextRequest): string | null {
   const authCookies = request.cookies
     .getAll()
@@ -104,10 +133,11 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const searchParams = request.nextUrl.searchParams
   const isDashboardRoute = pathname.startsWith('/dashboard')
+  const isOnboardingRoute = pathname === '/onboarding'
   const isAuthRoute = AUTH_ROUTES.has(pathname)
 
   if (!user) {
-    if (isDashboardRoute) {
+    if (isDashboardRoute || isOnboardingRoute) {
       const url = request.nextUrl.clone()
       url.pathname = '/login'
       return NextResponse.redirect(url)
@@ -133,29 +163,32 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (user.email_confirmed_at && pathname === '/dashboard') {
+  if (user.email_confirmed_at && (isDashboardRoute || isOnboardingRoute)) {
+    const accessToken = getAccessTokenFromCookies(request)
+    if (!accessToken) {
+      return supabaseResponse
+    }
+
     const bypassOnboarding =
       searchParams.get('skipOnboarding') === '1' ||
       searchParams.get('skipOnboarding') === 'true'
-    const createdAtMs = user.created_at ? new Date(user.created_at).getTime() : Number.NaN
-    const isRecentlyCreated = Number.isFinite(createdAtMs) && Date.now() - createdAtMs < 10 * 60 * 1000
-    const isNewUser = !bypassOnboarding && (isRecentlyCreated || searchParams.get('new') === 'true')
+    const onboardingCompleted = await getOnboardingCompleted(accessToken)
 
-    if (isNewUser) {
-      const accessToken = getAccessTokenFromCookies(request)
-      if (!accessToken) {
+    if (isOnboardingRoute && onboardingCompleted === true) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+
+    const shouldRequireOnboarding =
+      isDashboardRoute && !bypassOnboarding && onboardingCompleted === false
+
+    if (shouldRequireOnboarding) {
+      const hasEndpoints = await getHasEndpoints(accessToken)
+      if (!hasEndpoints) {
         const url = request.nextUrl.clone()
         url.pathname = '/onboarding'
         return NextResponse.redirect(url)
-      }
-
-      if (accessToken) {
-        const hasEndpoints = await getHasEndpoints(accessToken)
-        if (!hasEndpoints) {
-          const url = request.nextUrl.clone()
-          url.pathname = '/onboarding'
-          return NextResponse.redirect(url)
-        }
       }
     }
   }
@@ -164,5 +197,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/login', '/signup', '/forgot-password', '/reset-password', '/confirm-email'],
+  matcher: ['/dashboard/:path*', '/onboarding', '/login', '/signup', '/forgot-password', '/reset-password', '/confirm-email'],
 }

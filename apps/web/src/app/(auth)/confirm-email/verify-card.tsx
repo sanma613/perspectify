@@ -29,20 +29,6 @@ export function ConfirmEmailCard() {
     if (fromQuery) {
       setEmail(fromQuery)
     }
-
-    void (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (user?.email) {
-        setEmail(user.email)
-      }
-
-      if (user?.email_confirmed_at) {
-        setIsAlreadyConfirmed(true)
-      }
-    })()
   }, [])
 
   useEffect(() => {
@@ -57,14 +43,57 @@ export function ConfirmEmailCard() {
     router.replace(isNewUser ? '/dashboard?new=true' : '/dashboard')
   }
 
+  async function tryPendingPasswordSignIn(silent = false) {
+    const pendingEmail = sessionStorage.getItem('pending_confirmation_email')
+    const password = sessionStorage.getItem('pending_confirmation_password')
+
+    if (!pendingEmail || !password) return false
+
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      email: pendingEmail,
+      password,
+    })
+
+    if (signInError) {
+      const normalizedMessage = signInError.message.toLowerCase()
+
+      if (
+        normalizedMessage.includes('invalid login') ||
+        normalizedMessage.includes('invalid credentials')
+      ) {
+        sessionStorage.removeItem('pending_confirmation_email')
+        sessionStorage.removeItem('pending_confirmation_password')
+      }
+
+      if (!silent) {
+        if (
+          normalizedMessage.includes('email not confirmed') ||
+          normalizedMessage.includes('not confirmed')
+        ) {
+          setError("Your email isn't confirmed yet. Check your inbox and click the link, then try again.")
+        } else {
+          setError(signInError.message)
+        }
+      }
+
+      return false
+    }
+
+    if (data.session) {
+      sessionStorage.removeItem('pending_confirmation_email')
+      sessionStorage.removeItem('pending_confirmation_password')
+      await routeAfterConfirm()
+      return true
+    }
+
+    return false
+  }
+
   async function handleConfirmedClick() {
     setIsChecking(true)
     setError('')
 
-    const pendingEmail = sessionStorage.getItem('pending_confirmation_email')
-    const password = sessionStorage.getItem('pending_confirmation_password')
-
-    if (!pendingEmail || !password) {
+    if (!(await tryPendingPasswordSignIn())) {
       const {
         data: { session },
       } = await supabase.auth.getSession()
@@ -97,66 +126,72 @@ export function ConfirmEmailCard() {
       return
     }
 
-    const { data, error: signInError } = await supabase.auth.signInWithPassword({
-      email: pendingEmail,
-      password,
-    })
-
-    if (signInError) {
-      const normalizedMessage = signInError.message.toLowerCase()
-
-      if (
-        normalizedMessage.includes('email not confirmed') ||
-        normalizedMessage.includes('not confirmed')
-      ) {
-        setError("Your email isn't confirmed yet. Check your inbox and click the link, then try again.")
-        setIsChecking(false)
-        return
-      }
-
-      if (
-        normalizedMessage.includes('invalid login') ||
-        normalizedMessage.includes('invalid credentials')
-      ) {
-        sessionStorage.removeItem('pending_confirmation_email')
-        sessionStorage.removeItem('pending_confirmation_password')
-        setError('Something went wrong. Please log in manually.')
-        setIsChecking(false)
-        return
-      }
-
-      setError(signInError.message)
-      setIsChecking(false)
-      return
-    }
-
-    if (data.session) {
-      sessionStorage.removeItem('pending_confirmation_email')
-      sessionStorage.removeItem('pending_confirmation_password')
-      await routeAfterConfirm()
-      return
-    }
-
-    setError('Something went wrong. Please try logging in manually.')
     setIsChecking(false)
   }
 
   useEffect(() => {
-    const supabaseClient = createClient()
-    const {
-      data: { subscription },
-    } = supabaseClient.auth.onAuthStateChange(async (_event, session) => {
-      if (!session) return
+    let active = true
+    let cleanupChannel: (() => void) | null = null
 
-      sessionStorage.removeItem('pending_confirmation_email')
-      sessionStorage.removeItem('pending_confirmation_password')
-      await routeAfterConfirm()
-    })
+    async function subscribeToConfirmationChanges() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!active || !user?.id) return
+
+      if (user.email) {
+        setEmail(user.email)
+      }
+
+      if (user.email_confirmed_at) {
+        setIsAlreadyConfirmed(true)
+        return
+      }
+
+      const channel = supabase
+        .channel(`confirm-email:${user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'users',
+            filter: `id=eq.${user.id}`,
+          },
+          (payload) => {
+            const confirmedAt = (payload.new as { email_confirmed_at?: string | null } | null)?.email_confirmed_at
+            if (!confirmedAt) return
+
+            setIsAlreadyConfirmed(true)
+            void (async () => {
+              const {
+                data: { session },
+              } = await supabase.auth.getSession()
+
+              if (session) {
+                await routeAfterConfirm()
+                return
+              }
+
+              await tryPendingPasswordSignIn(true)
+            })()
+          }
+        )
+        .subscribe()
+
+      cleanupChannel = () => {
+        void supabase.removeChannel(channel)
+      }
+    }
+
+    void subscribeToConfirmationChanges()
 
     return () => {
-      subscription.unsubscribe()
+      active = false
+      if (cleanupChannel) cleanupChannel()
     }
-  }, [])
+  }, [supabase])
 
   async function resendEmail() {
     if (cooldown > 0 || !email) return

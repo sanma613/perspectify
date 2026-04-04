@@ -21,7 +21,9 @@ export const deliveryStatusEnum = pgEnum('delivery_status', [
 export const users = pgTable('users', {
   id:        text('id').primaryKey(),
   email:     text('email').notNull().unique(),
+  emailConfirmedAt: timestamp('email_confirmed_at'),
   plan:      planEnum('plan').default('free').notNull(),
+  onboardingCompleted: boolean('onboarding_completed').default(false).notNull(),
   freeReplaysUsed: integer('free_replays_used').default(0).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
