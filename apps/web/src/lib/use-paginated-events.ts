@@ -191,6 +191,8 @@ export function usePaginatedEvents({
   const [totalCount, setTotalCount] = useState(0)
   const [pendingCount, setPendingCount] = useState(0)
   const [showPendingBanner, setShowPendingBanner] = useState(false)
+  const supabase = useMemo(() => createClient(), [])
+  const channelsRef = useRef<ReturnType<typeof supabase.channel>[]>([])
   const nextCursorRef = useRef<EventsCursor | null>(null)
   const eventsRef = useRef<EventResponse[]>([])
   const headRefreshTimeoutRef = useRef<number | null>(null)
@@ -528,7 +530,6 @@ export function usePaginatedEvents({
   useEffect(() => {
     if (!activeEndpointIdsKey) return
 
-    const supabase = createClient()
     const channelName = `events-head-${activeEndpointIds.join('-')}-${needsRescue ? 'rescue' : 'all'}`
     let channel: ReturnType<typeof supabase.channel> | null = null
 
@@ -585,12 +586,50 @@ export function usePaginatedEvents({
           }
         )
         .subscribe()
+
+      const eventsPageChannel = supabase
+        .channel('events-page')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'events',
+            filter: `endpoint_id=in.(${activeEndpointIds.join(',')})`,
+          },
+          (payload) => {
+            const newEvent = payload.new as EventResponse
+            if (!matchesActiveFilters(newEvent, activeEndpointIdsSet, needsRescue)) return
+            setEvents((previous) => dedupeEvents([newEvent, ...previous]))
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'events',
+            filter: `endpoint_id=in.(${activeEndpointIds.join(',')})`,
+          },
+          (payload) => {
+            const updated = payload.new as EventResponse
+            setEvents((previous) => previous.map((entry) => (entry.id === updated.id ? { ...entry, ...updated } : entry)))
+          }
+        )
+        .subscribe()
+
+      channelsRef.current.push(eventsPageChannel)
     }
 
     const unsubscribe = () => {
-      if (!channel) return
-      void supabase.removeChannel(channel)
-      channel = null
+      if (channel) {
+        void supabase.removeChannel(channel)
+        channel = null
+      }
+      channelsRef.current.forEach((ch) => {
+        void supabase.removeChannel(ch)
+      })
+      channelsRef.current = []
     }
 
     const onVisibilityChange = () => {
@@ -617,15 +656,21 @@ export function usePaginatedEvents({
       }
       resetPendingState()
       unsubscribe()
+      channelsRef.current.forEach((ch) => {
+        void supabase.removeChannel(ch)
+      })
+      channelsRef.current = []
     }
   }, [
     BURST_THRESHOLD,
     FLUSH_INTERVAL_MS,
     activeEndpointIds,
     activeEndpointIdsKey,
+    activeEndpointIdsSet,
     flushPendingEvents,
     needsRescue,
     resetPendingState,
+    supabase,
     syncHead,
   ])
 

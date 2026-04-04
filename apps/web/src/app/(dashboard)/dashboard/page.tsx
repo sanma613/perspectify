@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, Copy } from 'lucide-react'
+import { ArrowDown, Copy, RefreshCw } from 'lucide-react'
 import type { EventResponse } from '../../../lib/api-types'
 import { getAccessToken } from '../../../lib/access-token'
 import { apiFetch } from '../../../lib/http'
@@ -176,7 +176,18 @@ function EventCard({
 
 export default function DashboardPage() {
   const isMobile = useMobile()
-  const { me, endpoints, loading, error, eventsThisMonth } = useDashboardData()
+  const {
+    me,
+    endpoints,
+    loading,
+    error,
+    eventsThisMonth,
+    realtimeStatus,
+    pendingBuffer,
+    showPendingBanner,
+    flushPendingBuffer,
+    refresh,
+  } = useDashboardData()
 
   const [pendingRescue, setPendingRescue] = useState<string | null>(null)
   const [rescueAllLoading, setRescueAllLoading] = useState(false)
@@ -188,9 +199,6 @@ export default function DashboardPage() {
     loading: eventsLoading,
     error: eventsError,
     patchEvent,
-    showPendingBanner,
-    pendingCount,
-    flushPendingEvents,
   } = usePaginatedEvents({
     allEndpointIds: endpointIds,
     selectedEndpointIds: [],
@@ -271,20 +279,44 @@ export default function DashboardPage() {
     <section className="space-y-4">
       <div className="flex flex-col gap-2 rounded-full border border-[#22c55e]/40 bg-[#22c55e]/15 px-4 py-3 text-sm text-[#dcfce7] md:flex-row md:items-center md:justify-between">
         <span className="truncate">● All systems delivering</span>
-        <span className="text-xs text-[#bbf7d0]">Last updated {events[0]?.receivedAt ? relative(events[0].receivedAt) : 'just now'}</span>
+        <div className="flex items-center gap-4">
+          <span className="text-xs text-[#bbf7d0]">Last updated {events[0]?.receivedAt ? relative(events[0].receivedAt) : 'just now'}</span>
+          <div className="flex items-center gap-1.5">
+            {realtimeStatus === 'live' ? (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                <span className="text-xs text-zinc-600">Live</span>
+              </>
+            ) : null}
+            {realtimeStatus === 'connecting' ? (
+              <>
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-zinc-600" />
+                <span className="text-xs text-zinc-700">Connecting...</span>
+              </>
+            ) : null}
+            {realtimeStatus === 'error' ? (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                <span className="text-xs text-zinc-600">Reconnecting</span>
+              </>
+            ) : null}
+          </div>
+        </div>
       </div>
 
       {showPendingBanner ? (
         <button
-          onClick={() => {
-            void flushPendingEvents()
-          }}
-          className="animate-pulse-once flex w-full items-center justify-between rounded-xl border border-green-500/25 bg-green-500/8 px-4 py-3 text-sm font-medium text-green-400 transition-colors hover:bg-green-500/12"
+          onClick={flushPendingBuffer}
+          className="mb-3 flex w-full items-center justify-between rounded-xl border border-green-500/25 bg-green-500/8 px-4 py-3 text-sm font-medium text-green-400 transition-colors hover:bg-green-500/12"
+          style={{ animation: 'pulseOnce 600ms ease-in-out 1' }}
           type="button"
         >
           <div className="flex items-center gap-2">
             <ArrowDown size={16} />
-            <span>{pendingCount} new event{pendingCount !== 1 ? 's' : ''} received</span>
+            <span>
+              {pendingBuffer.length} new event
+              {pendingBuffer.length !== 1 ? 's' : ''} received
+            </span>
           </div>
           <span className="text-xs text-green-500/60">Click to load</span>
         </button>
@@ -362,9 +394,22 @@ export default function DashboardPage() {
           <section className="space-y-2">
             <header className="flex items-center justify-between">
               <h2 className="font-display text-lg text-white">Recent activity</h2>
-              <Link className="text-sm text-[#22c55e]" href="/dashboard/events">
-                View full history
-              </Link>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    void refresh()
+                  }}
+                  className="flex items-center gap-1.5 text-xs text-zinc-600 transition-colors hover:text-zinc-400"
+                  title="Refresh data"
+                  type="button"
+                >
+                  <RefreshCw size={12} />
+                  Refresh
+                </button>
+                <Link className="text-sm text-[#22c55e]" href="/dashboard/events">
+                  View full history
+                </Link>
+              </div>
             </header>
 
             {deliveredEvents.slice(0, 8).map((event) => (

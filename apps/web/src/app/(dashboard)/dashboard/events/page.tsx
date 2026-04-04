@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, ChevronDown, ChevronRight, Copy, ExternalLink, Loader2 } from 'lucide-react'
+import { AlertTriangle, ArrowDown, ChevronDown, ChevronRight, Copy, ExternalLink, Loader2 } from 'lucide-react'
 import type { EventAttemptResponse, EventDetailResponse, EventResponse } from '../../../../lib/api-types'
 import { getAccessToken } from '../../../../lib/access-token'
 import { apiFetch } from '../../../../lib/http'
@@ -33,7 +33,15 @@ type DateKey = '24h' | '7d' | '30d' | 'custom'
 
 export default function EventsPage() {
   const isMobile = useMobile()
-  const { me, endpoints, loading: dashboardLoading, error: dashboardError } = useDashboardData()
+  const {
+    me,
+    endpoints,
+    loading: dashboardLoading,
+    error: dashboardError,
+    pendingBuffer,
+    showPendingBanner,
+    flushPendingBuffer,
+  } = useDashboardData()
 
   const [statusFilters, setStatusFilters] = useState<StatusKey[]>(['ALL'])
   const [endpointFilter, setEndpointFilter] = useState('all')
@@ -254,6 +262,24 @@ export default function EventsPage() {
           </div>
         )}
       </div>
+
+      {showPendingBanner ? (
+        <button
+          onClick={flushPendingBuffer}
+          className="mb-3 flex w-full items-center justify-between rounded-xl border border-green-500/25 bg-green-500/8 px-4 py-3 text-sm font-medium text-green-400 transition-colors hover:bg-green-500/12"
+          style={{ animation: 'pulseOnce 600ms ease-in-out 1' }}
+          type="button"
+        >
+          <div className="flex items-center gap-2">
+            <ArrowDown size={16} />
+            <span>
+              {pendingBuffer.length} new event
+              {pendingBuffer.length !== 1 ? 's' : ''} received
+            </span>
+          </div>
+          <span className="text-xs text-green-500/60">Click to load</span>
+        </button>
+      ) : null}
 
       <div className="overflow-hidden rounded-xl border border-white/10 bg-zinc-950/70">
         {filtered.map((event) => {

@@ -142,35 +142,20 @@ export function ConfirmEmailCard() {
   }
 
   useEffect(() => {
-    const pendingEmail = sessionStorage.getItem('pending_confirmation_email')
-    const password = sessionStorage.getItem('pending_confirmation_password')
+    const supabaseClient = createClient()
+    const {
+      data: { subscription },
+    } = supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+      if (!session) return
 
-    if (!pendingEmail || !password) return
+      sessionStorage.removeItem('pending_confirmation_email')
+      sessionStorage.removeItem('pending_confirmation_password')
+      await routeAfterConfirm()
+    })
 
-    let attempts = 0
-    const MAX_ATTEMPTS = 20
-
-    const interval = window.setInterval(async () => {
-      attempts += 1
-      if (attempts > MAX_ATTEMPTS) {
-        window.clearInterval(interval)
-        return
-      }
-
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email: pendingEmail,
-        password,
-      })
-
-      if (data.session && !signInError) {
-        window.clearInterval(interval)
-        sessionStorage.removeItem('pending_confirmation_email')
-        sessionStorage.removeItem('pending_confirmation_password')
-        await routeAfterConfirm()
-      }
-    }, 4000)
-
-    return () => window.clearInterval(interval)
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [])
 
   async function resendEmail() {
