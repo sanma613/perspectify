@@ -76,6 +76,22 @@ export function ConfirmEmailCard() {
         return
       }
 
+      if (email) {
+        const { error: otpError } = await supabase.auth.signInWithOtp({
+          email,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+            shouldCreateUser: false,
+          },
+        })
+
+        if (!otpError) {
+          setMessage('We sent a sign-in link to your email. Open it on this device to continue.')
+          setIsChecking(false)
+          return
+        }
+      }
+
       setError('Please go back to login and sign in with your email and password.')
       setIsChecking(false)
       return
@@ -187,8 +203,11 @@ export function ConfirmEmailCard() {
       <AuthPanel title="Email confirmed" subtitle="Your email is already confirmed.">
         <div className="space-y-4">
           <div className="grid place-items-center">
-            <div className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-emerald-400/25 bg-emerald-400/10">
-              <CheckCircle2 className="h-6 w-6 text-emerald-300" />
+            <div className="relative inline-flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[#1a1a1a]">
+              <Mail className="h-6 w-6 text-[#22c55e]" />
+              <span className="absolute -bottom-1 -right-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-emerald-300/30 bg-emerald-400/15">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300" />
+              </span>
             </div>
           </div>
 
