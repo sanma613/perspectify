@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../../../lib/supabase/client'
@@ -73,6 +73,10 @@ export function SignupForm() {
 
     setFieldErrors(visibleErrors)
   }
+
+  useEffect(() => {
+    validateInRealTime({ email, password, confirm: confirmValue, name })
+  }, [email, password, confirmValue, name, touched])
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -158,16 +162,12 @@ export function SignupForm() {
         label="Display name"
         name="name"
         onBlur={() => {
-          const nextTouched = { ...touched, name: true }
-          setTouched(nextTouched)
-          validateInRealTime({ email, password, confirm: confirmValue, name }, nextTouched)
+          setTouched((prev) => ({ ...prev, name: true }))
         }}
         onChange={(event) => {
           const nextValue = event.target.value
           setName(nextValue)
-          const nextTouched = { ...touched, name: true }
-          setTouched(nextTouched)
-          validateInRealTime({ email, password, confirm: confirmValue, name: nextValue }, nextTouched)
+          setTouched((prev) => ({ ...prev, name: true }))
         }}
         required
         value={name}
@@ -178,16 +178,12 @@ export function SignupForm() {
         label="Email"
         name="email"
         onBlur={() => {
-          const nextTouched = { ...touched, email: true }
-          setTouched(nextTouched)
-          validateInRealTime({ email, password, confirm: confirmValue, name }, nextTouched)
+          setTouched((prev) => ({ ...prev, email: true }))
         }}
         onChange={(event) => {
           const nextValue = event.target.value
           setEmail(nextValue)
-          const nextTouched = { ...touched, email: true }
-          setTouched(nextTouched)
-          validateInRealTime({ email: nextValue, password, confirm: confirmValue, name }, nextTouched)
+          setTouched((prev) => ({ ...prev, email: true }))
         }}
         required
         type="email"
@@ -202,20 +198,16 @@ export function SignupForm() {
             className="h-11 w-full rounded-lg border border-white/10 bg-[#1a1a1a] px-3 pr-10 text-base text-white outline-none transition-colors duration-200 ease-in-out placeholder:text-[#52525b] hover:bg-[#202020] focus-visible:ring-2 focus-visible:ring-green-500"
             name="password"
             onBlur={() => {
-              const nextTouched = { ...touched, password: true }
-              setTouched(nextTouched)
-              validateInRealTime({ email, password, confirm: confirmValue, name }, nextTouched)
+              setTouched((prev) => ({ ...prev, password: true }))
             }}
             onChange={(event) => {
               const nextValue = event.target.value
               setPassword(nextValue)
-              const nextTouched = {
-                ...touched,
+              setTouched((prev) => ({
+                ...prev,
                 password: true,
-                confirm: touched.confirm || confirmValue.length > 0,
-              }
-              setTouched(nextTouched)
-              validateInRealTime({ email, password: nextValue, confirm: confirmValue, name }, nextTouched)
+                confirm: prev.confirm || confirmValue.length > 0,
+              }))
             }}
             required
             type={passwordVisibility.inputType}
@@ -242,14 +234,10 @@ export function SignupForm() {
             onChange={(event) => {
               const nextValue = event.target.value
               setConfirmValue(nextValue)
-              const nextTouched = { ...touched, confirm: true }
-              setTouched(nextTouched)
-              validateInRealTime({ email, password, confirm: nextValue, name }, nextTouched)
+              setTouched((prev) => ({ ...prev, confirm: true }))
             }}
             onBlur={() => {
-              const nextTouched = { ...touched, confirm: true }
-              setTouched(nextTouched)
-              validateInRealTime({ email, password, confirm: confirmValue, name }, nextTouched)
+              setTouched((prev) => ({ ...prev, confirm: true }))
             }}
             className={`w-full bg-zinc-900 rounded-xl px-4 py-3 pr-10 text-sm border transition-colors outline-none focus:border-green-500/40 ${
               fieldErrors.confirm ? 'border-red-400' : 'border-white/10'
