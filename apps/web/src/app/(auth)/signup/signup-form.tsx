@@ -30,6 +30,12 @@ export function SignupForm() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(false)
   const strength = passwordStrength(password)
+  const canSubmit = signUpSchema.safeParse({
+    email,
+    password,
+    confirm: confirmValue,
+    name,
+  }).success
   const duplicateAccountMessage =
     'An account with this email already exists. Sign in or reset your password if you forgot it.'
 
@@ -273,7 +279,7 @@ export function SignupForm() {
 
       {error ? <p className="text-sm text-[#ef4444]">{error}</p> : null}
 
-      <PrimaryButton disabled={isLoading || confirmValue !== password} type="submit">
+      <PrimaryButton disabled={isLoading || !canSubmit} type="submit">
         {isLoading ? 'Creating account...' : 'Create account'}
       </PrimaryButton>
     </form>

@@ -20,6 +20,7 @@ export function LoginForm() {
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(false)
+  const canSubmit = loginSchema.safeParse({ email, password }).success
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -113,7 +114,7 @@ export function LoginForm() {
 
       {error ? <p className="text-sm text-[#ef4444]">{error}</p> : null}
 
-      <PrimaryButton disabled={isLoading} type="submit">
+      <PrimaryButton disabled={isLoading || !canSubmit} type="submit">
         {isLoading ? 'Signing in...' : 'Sign in'}
       </PrimaryButton>
     </form>
