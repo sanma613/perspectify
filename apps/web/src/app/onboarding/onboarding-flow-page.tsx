@@ -276,19 +276,6 @@ export function OnboardingFlowPage() {
     []
   )
 
-  async function cleanupDraftEndpoint(silent = true) {
-    if (!draftEndpointId || completedRef.current) return
-
-    try {
-      const token = await getAccessToken()
-      await apiFetch(`/endpoints/${draftEndpointId}`, token, { method: 'DELETE' })
-    } catch (error) {
-      if (!silent) {
-        setStepTwoError(error instanceof Error ? error.message : 'Could not prepare endpoint.')
-      }
-    }
-  }
-
   async function ensureDraftEndpoint(name: string, destination: string): Promise<DraftEndpoint> {
     const normalizedName = name.trim()
     const normalizedDestination = destination.trim()
@@ -474,10 +461,15 @@ export function OnboardingFlowPage() {
       })
 
       // Redundant/idempotent safeguard for completion state sync.
-      await apiFetch('/me', token, {
-        method: 'PATCH',
-        body: JSON.stringify({ onboardingCompleted: true }),
-      })
+      // If this fails, endpoint PATCH already marked onboarding as completed.
+      try {
+        await apiFetch('/me', token, {
+          method: 'PATCH',
+          body: JSON.stringify({ onboardingCompleted: true }),
+        })
+      } catch {
+        // Keep navigation non-blocking once endpoint setup succeeded.
+      }
 
       completedRef.current = true
       router.push('/dashboard')

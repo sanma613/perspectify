@@ -10,13 +10,22 @@ interface UpdateMeBody {
 }
 
 async function markOnboardingCompleted(userId: string): Promise<boolean> {
-  const updatedRows = await db
+  const [existing] = await db
+    .select({ onboardingCompleted: users.onboardingCompleted })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+
+  if (!existing || existing.onboardingCompleted) {
+    return false
+  }
+
+  await db
     .update(users)
     .set({ onboardingCompleted: true })
     .where(and(eq(users.id, userId), eq(users.onboardingCompleted, false)))
-    .returning({ id: users.id })
 
-  return updatedRows.length > 0
+  return true
 }
 
 // GET /me
@@ -100,15 +109,23 @@ meRoutes.patch('/', async (c) => {
     return c.json({ changed: false, ignored: true })
   }
 
-  await db
-    .insert(users)
-    .values({
-      id: authUser.id,
-      email: authUser.email ?? '',
+  try {
+    await db
+      .insert(users)
+      .values({
+        id: authUser.id,
+        email: authUser.email ?? '',
+      })
+      .onConflictDoNothing()
+
+    const changed = await markOnboardingCompleted(authUser.id)
+
+    return c.json({ changed })
+  } catch (error) {
+    console.error('PATCH /me onboarding update failed', {
+      userId: authUser.id,
+      error,
     })
-    .onConflictDoNothing()
-
-  const changed = await markOnboardingCompleted(authUser.id)
-
-  return c.json({ changed })
+    return c.json({ error: 'Could not persist onboarding state' }, 500)
+  }
 })
