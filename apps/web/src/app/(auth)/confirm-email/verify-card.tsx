@@ -21,9 +21,6 @@ export function ConfirmEmailCard() {
   const [message, setMessage] = useState<string | null>(null)
   const [isAlreadyConfirmed, setIsAlreadyConfirmed] = useState(false)
 
-  const isNewUser =
-    typeof window !== 'undefined' && new URL(window.location.href).searchParams.get('new') === 'true'
-
   useEffect(() => {
     const fromQuery = new URL(window.location.href).searchParams.get('email')
     if (fromQuery) {
@@ -40,7 +37,24 @@ export function ConfirmEmailCard() {
   }, [])
 
   async function routeAfterConfirm() {
-    router.replace(isNewUser ? '/dashboard?new=true' : '/dashboard')
+    router.replace('/dashboard')
+  }
+
+  async function autoContinueAfterConfirmed() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+
+    if (session) {
+      await routeAfterConfirm()
+      return true
+    }
+
+    const didSignIn = await tryPendingPasswordSignIn(true)
+    if (didSignIn) return true
+
+    setIsAlreadyConfirmed(true)
+    return false
   }
 
   async function tryPendingPasswordSignIn(silent = false) {
@@ -145,7 +159,7 @@ export function ConfirmEmailCard() {
       }
 
       if (user.email_confirmed_at) {
-        setIsAlreadyConfirmed(true)
+        await autoContinueAfterConfirmed()
         return
       }
 
@@ -163,18 +177,8 @@ export function ConfirmEmailCard() {
             const confirmedAt = (payload.new as { email_confirmed_at?: string | null } | null)?.email_confirmed_at
             if (!confirmedAt) return
 
-            setIsAlreadyConfirmed(true)
             void (async () => {
-              const {
-                data: { session },
-              } = await supabase.auth.getSession()
-
-              if (session) {
-                await routeAfterConfirm()
-                return
-              }
-
-              await tryPendingPasswordSignIn(true)
+              await autoContinueAfterConfirmed()
             })()
           }
         )

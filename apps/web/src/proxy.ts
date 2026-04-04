@@ -5,30 +5,6 @@ function getApiBaseUrl() {
   return process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
 }
 
-async function getHasEndpoints(accessToken: string): Promise<boolean> {
-  try {
-    const response = await fetch(`${getApiBaseUrl()}/endpoints`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(3000),
-    })
-
-    if (!response.ok) return false
-
-    const data = (await response.json()) as unknown
-    const endpoints = Array.isArray(data)
-      ? data
-      : (data as { endpoints?: unknown })?.endpoints
-
-    return Array.isArray(endpoints) && endpoints.length > 0
-  } catch {
-    // In dev, API restarts can briefly close sockets; fail open to avoid crashing Next proxy.
-    return true
-  }
-}
-
 async function getOnboardingCompleted(accessToken: string): Promise<boolean | null> {
   try {
     const response = await fetch(`${getApiBaseUrl()}/me`, {
@@ -55,6 +31,25 @@ async function getOnboardingCompleted(accessToken: string): Promise<boolean | nu
   } catch {
     // API hiccups should not lock authenticated users behind redirects.
     return null
+  }
+}
+
+async function setOnboardingCompleted(accessToken: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${getApiBaseUrl()}/me`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ onboardingCompleted: true }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(3000),
+    })
+
+    return response.ok
+  } catch {
+    return false
   }
 }
 
@@ -151,28 +146,35 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (user.email_confirmed_at && isAuthRoute) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
-  }
-
   if (!user.email_confirmed_at && isDashboardRoute) {
     const url = request.nextUrl.clone()
     url.pathname = '/confirm-email'
     return NextResponse.redirect(url)
   }
 
-  if (user.email_confirmed_at && (isDashboardRoute || isOnboardingRoute)) {
+  if (user.email_confirmed_at && (isDashboardRoute || isOnboardingRoute || isAuthRoute)) {
     const accessToken = getAccessTokenFromCookies(request)
     if (!accessToken) {
+      if (isAuthRoute) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/dashboard'
+        return NextResponse.redirect(url)
+      }
+
       return supabaseResponse
     }
 
     const bypassOnboarding =
       searchParams.get('skipOnboarding') === '1' ||
       searchParams.get('skipOnboarding') === 'true'
-    const onboardingCompleted = await getOnboardingCompleted(accessToken)
+    let onboardingCompleted = await getOnboardingCompleted(accessToken)
+
+    if (bypassOnboarding && onboardingCompleted === false) {
+      const markedCompleted = await setOnboardingCompleted(accessToken)
+      if (markedCompleted) {
+        onboardingCompleted = true
+      }
+    }
 
     if (isOnboardingRoute && onboardingCompleted === true) {
       const url = request.nextUrl.clone()
@@ -181,15 +183,18 @@ export async function proxy(request: NextRequest) {
     }
 
     const shouldRequireOnboarding =
-      isDashboardRoute && !bypassOnboarding && onboardingCompleted === false
+      (isDashboardRoute || isAuthRoute) && !bypassOnboarding && onboardingCompleted === false
 
     if (shouldRequireOnboarding) {
-      const hasEndpoints = await getHasEndpoints(accessToken)
-      if (!hasEndpoints) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/onboarding'
-        return NextResponse.redirect(url)
-      }
+      const url = request.nextUrl.clone()
+      url.pathname = '/onboarding'
+      return NextResponse.redirect(url)
+    }
+
+    if (isAuthRoute) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
     }
   }
 

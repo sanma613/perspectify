@@ -4,6 +4,10 @@ import { eq } from 'drizzle-orm'
 
 export const meRoutes = new Hono()
 
+interface UpdateMeBody {
+  onboardingCompleted?: boolean
+}
+
 // GET /me
 meRoutes.get('/', async (c) => {
   const authUser = c.get('user')
@@ -49,4 +53,33 @@ meRoutes.get('/', async (c) => {
       replaysUsed: Number(row.freeReplaysUsed ?? 0),
     },
   })
+})
+
+// PATCH /me
+meRoutes.patch('/', async (c) => {
+  const authUser = c.get('user')
+
+  let body: UpdateMeBody
+  try {
+    body = await c.req.json<UpdateMeBody>()
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400)
+  }
+
+  const updates: { onboardingCompleted?: boolean } = {}
+
+  if (typeof body.onboardingCompleted === 'boolean') {
+    updates.onboardingCompleted = body.onboardingCompleted
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return c.json({ changed: false })
+  }
+
+  await db
+    .update(users)
+    .set(updates)
+    .where(eq(users.id, authUser.id))
+
+  return c.json({ changed: true })
 })

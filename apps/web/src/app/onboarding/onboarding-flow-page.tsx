@@ -543,10 +543,10 @@ export function OnboardingFlowPage() {
             <span className="font-display text-lg font-bold tracking-tight text-white">Perspectify</span>
           </Link>
           <div className="text-sm text-zinc-500">
-            <Link className="hidden md:inline transition hover:text-white" href="/dashboard">
+            <Link className="hidden md:inline transition hover:text-white" href="/dashboard?skipOnboarding=1">
               Go to dashboard →
             </Link>
-            <Link className="md:hidden text-sm text-zinc-500" href="/dashboard">
+            <Link className="md:hidden text-sm text-zinc-500" href="/dashboard?skipOnboarding=1">
               Go to dashboard →
             </Link>
           </div>
