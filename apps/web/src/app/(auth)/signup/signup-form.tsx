@@ -26,6 +26,8 @@ export function SignupForm() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(false)
   const strength = passwordStrength(password)
+  const duplicateAccountMessage =
+    'Ya existe una cuenta con este correo. Inicia sesión o recupera tu contraseña si la olvidaste.'
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -65,7 +67,7 @@ export function SignupForm() {
     sessionStorage.setItem('pending_confirmation_email', parsed.data.email)
     sessionStorage.setItem('pending_confirmation_password', parsed.data.password)
 
-    const { error: signUpError } = await supabase.auth.signUp({
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email: parsed.data.email,
       password: parsed.data.password,
       options: {
@@ -79,7 +81,28 @@ export function SignupForm() {
     setIsLoading(false)
 
     if (signUpError) {
+      const normalizedMessage = signUpError.message.toLowerCase()
+      const isDuplicateError =
+        normalizedMessage.includes('already registered') ||
+        normalizedMessage.includes('already exists') ||
+        normalizedMessage.includes('duplicate')
+
+      if (isDuplicateError) {
+        sessionStorage.removeItem('pending_confirmation_email')
+        sessionStorage.removeItem('pending_confirmation_password')
+        setError(duplicateAccountMessage)
+        return
+      }
+
       setError(signUpError.message)
+      return
+    }
+
+    // Supabase can obfuscate duplicate-user signups by returning a user with no identities.
+    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      sessionStorage.removeItem('pending_confirmation_email')
+      sessionStorage.removeItem('pending_confirmation_password')
+      setError(duplicateAccountMessage)
       return
     }
 
