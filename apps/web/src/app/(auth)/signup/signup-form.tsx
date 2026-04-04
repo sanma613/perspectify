@@ -19,19 +19,67 @@ export function SignupForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmValue, setConfirmValue] = useState('')
-  const [confirmTouched, setConfirmTouched] = useState(false)
-  const [confirmError, setConfirmError] = useState('')
   const [name, setName] = useState('')
+  const [touched, setTouched] = useState<Record<'email' | 'password' | 'confirm' | 'name', boolean>>({
+    email: false,
+    password: false,
+    confirm: false,
+    name: false,
+  })
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [isLoading, setIsLoading] = useState(false)
   const strength = passwordStrength(password)
   const duplicateAccountMessage =
-    'Ya existe una cuenta con este correo. Inicia sesión o recupera tu contraseña si la olvidaste.'
+    'An account with this email already exists. Sign in or reset your password if you forgot it.'
+
+  function getSchemaErrors(values: {
+    email: string
+    password: string
+    confirm: string
+    name: string
+  }) {
+    const parsed = signUpSchema.safeParse(values)
+    if (parsed.success) return {}
+
+    const nextErrors: Record<string, string> = {}
+    parsed.error.issues.forEach((issue) => {
+      const key = issue.path[0]
+      if (typeof key === 'string' && !nextErrors[key]) {
+        nextErrors[key] = issue.message
+      }
+    })
+
+    return nextErrors
+  }
+
+  function validateInRealTime(
+    values: {
+      email: string
+      password: string
+      confirm: string
+      name: string
+    },
+    nextTouched = touched,
+  ) {
+    const nextErrors = getSchemaErrors(values)
+    const visibleErrors: Record<string, string> = {}
+
+    ;(['email', 'password', 'confirm', 'name'] as const).forEach((key) => {
+      if (nextTouched[key] && nextErrors[key]) {
+        visibleErrors[key] = nextErrors[key]
+      }
+    })
+
+    setFieldErrors(visibleErrors)
+  }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
+
+    const allTouched = { email: true, password: true, confirm: true, name: true }
+    setTouched(allTouched)
 
     const parsed = signUpSchema.safeParse({
       email,
@@ -40,18 +88,11 @@ export function SignupForm() {
       name,
     })
     if (!parsed.success) {
-      const nextErrors: Record<string, string> = {}
-      parsed.error.issues.forEach((issue) => {
-        const key = issue.path[0]
-        if (typeof key === 'string') nextErrors[key] = issue.message
-      })
-      setFieldErrors(nextErrors)
-      if (nextErrors.confirm) setConfirmError(nextErrors.confirm)
+      validateInRealTime({ email, password, confirm: confirmValue, name }, allTouched)
       return
     }
 
     setFieldErrors({})
-    setConfirmError('')
     setIsLoading(true)
 
     const emailRedirectTo = `${window.location.origin}/auth/callback`
@@ -116,7 +157,18 @@ export function SignupForm() {
         autoComplete="name"
         label="Display name"
         name="name"
-        onChange={(event) => setName(event.target.value)}
+        onBlur={() => {
+          const nextTouched = { ...touched, name: true }
+          setTouched(nextTouched)
+          validateInRealTime({ email, password, confirm: confirmValue, name }, nextTouched)
+        }}
+        onChange={(event) => {
+          const nextValue = event.target.value
+          setName(nextValue)
+          const nextTouched = { ...touched, name: true }
+          setTouched(nextTouched)
+          validateInRealTime({ email, password, confirm: confirmValue, name: nextValue }, nextTouched)
+        }}
         required
         value={name}
         error={fieldErrors.name}
@@ -125,7 +177,18 @@ export function SignupForm() {
         autoComplete="email"
         label="Email"
         name="email"
-        onChange={(event) => setEmail(event.target.value)}
+        onBlur={() => {
+          const nextTouched = { ...touched, email: true }
+          setTouched(nextTouched)
+          validateInRealTime({ email, password, confirm: confirmValue, name }, nextTouched)
+        }}
+        onChange={(event) => {
+          const nextValue = event.target.value
+          setEmail(nextValue)
+          const nextTouched = { ...touched, email: true }
+          setTouched(nextTouched)
+          validateInRealTime({ email: nextValue, password, confirm: confirmValue, name }, nextTouched)
+        }}
         required
         type="email"
         value={email}
@@ -138,7 +201,22 @@ export function SignupForm() {
             autoComplete="new-password"
             className="h-11 w-full rounded-lg border border-white/10 bg-[#1a1a1a] px-3 pr-10 text-base text-white outline-none transition-colors duration-200 ease-in-out placeholder:text-[#52525b] hover:bg-[#202020] focus-visible:ring-2 focus-visible:ring-green-500"
             name="password"
-            onChange={(event) => setPassword(event.target.value)}
+            onBlur={() => {
+              const nextTouched = { ...touched, password: true }
+              setTouched(nextTouched)
+              validateInRealTime({ email, password, confirm: confirmValue, name }, nextTouched)
+            }}
+            onChange={(event) => {
+              const nextValue = event.target.value
+              setPassword(nextValue)
+              const nextTouched = {
+                ...touched,
+                password: true,
+                confirm: touched.confirm || confirmValue.length > 0,
+              }
+              setTouched(nextTouched)
+              validateInRealTime({ email, password: nextValue, confirm: confirmValue, name }, nextTouched)
+            }}
             required
             type={passwordVisibility.inputType}
             value={password}
@@ -164,22 +242,17 @@ export function SignupForm() {
             onChange={(event) => {
               const nextValue = event.target.value
               setConfirmValue(nextValue)
-              if (confirmTouched) {
-                if (nextValue !== password) {
-                  setConfirmError("Passwords don't match")
-                } else {
-                  setConfirmError('')
-                }
-              }
+              const nextTouched = { ...touched, confirm: true }
+              setTouched(nextTouched)
+              validateInRealTime({ email, password, confirm: nextValue, name }, nextTouched)
             }}
             onBlur={() => {
-              setConfirmTouched(true)
-              if (confirmValue !== password) {
-                setConfirmError("Passwords don't match")
-              }
+              const nextTouched = { ...touched, confirm: true }
+              setTouched(nextTouched)
+              validateInRealTime({ email, password, confirm: confirmValue, name }, nextTouched)
             }}
             className={`w-full bg-zinc-900 rounded-xl px-4 py-3 pr-10 text-sm border transition-colors outline-none focus:border-green-500/40 ${
-              confirmError ? 'border-red-400' : 'border-white/10'
+              fieldErrors.confirm ? 'border-red-400' : 'border-white/10'
             }`}
           />
           <button
@@ -192,7 +265,7 @@ export function SignupForm() {
             {confirmPassword.visible ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         </div>
-        {confirmError ? <p className="mt-1 text-xs text-red-400">{confirmError}</p> : null}
+        {fieldErrors.confirm ? <p className="mt-1 text-xs text-red-400">{fieldErrors.confirm}</p> : null}
       </div>
 
       <p className="text-xs text-[#a1a1aa]">
