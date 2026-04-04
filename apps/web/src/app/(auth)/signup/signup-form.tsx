@@ -1,14 +1,17 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../../../lib/supabase/client'
 import { handleEnterAdvance } from '../../../lib/forms/enter-navigation'
+import { getApiBaseUrl } from '../../../lib/http'
 import { passwordStrength } from '../../../lib/password-strength'
 import { signUpSchema } from '../../../lib/validation/auth'
 import { usePasswordVisibility } from '../../../hooks/use-password-visibility'
 import { Field, PrimaryButton } from '../_components/form-primitives'
+
+type EmailAvailability = 'idle' | 'checking' | 'available' | 'taken' | 'error'
 
 export function SignupForm() {
   const router = useRouter()
@@ -28,14 +31,17 @@ export function SignupForm() {
   })
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [emailAvailability, setEmailAvailability] = useState<EmailAvailability>('idle')
   const [isLoading, setIsLoading] = useState(false)
+  const emailLookupCache = useRef<Record<string, boolean>>({})
   const strength = passwordStrength(password)
-  const canSubmit = signUpSchema.safeParse({
+  const schemaIsValid = signUpSchema.safeParse({
     email,
     password,
     confirm: confirmValue,
     name,
   }).success
+  const canSubmit = schemaIsValid && emailAvailability === 'available'
   const duplicateAccountMessage =
     'An account with this email already exists. Sign in or reset your password if you forgot it.'
 
@@ -84,6 +90,61 @@ export function SignupForm() {
     validateInRealTime({ email, password, confirm: confirmValue, name })
   }, [email, password, confirmValue, name, touched])
 
+  useEffect(() => {
+    const normalizedEmail = email.trim().toLowerCase()
+
+    if (!touched.email) {
+      setEmailAvailability('idle')
+      return
+    }
+
+    if (!normalizedEmail || Boolean(fieldErrors.email)) {
+      setEmailAvailability('idle')
+      return
+    }
+
+    if (normalizedEmail in emailLookupCache.current) {
+      setEmailAvailability(emailLookupCache.current[normalizedEmail] ? 'taken' : 'available')
+      return
+    }
+
+    const controller = new AbortController()
+    const debounceTimer = window.setTimeout(async () => {
+      setEmailAvailability('checking')
+
+      try {
+        const response = await fetch(
+          `${getApiBaseUrl()}/auth/check-email?email=${encodeURIComponent(normalizedEmail)}`,
+          {
+            method: 'GET',
+            signal: controller.signal,
+            cache: 'no-store',
+          }
+        )
+
+        if (!response.ok) {
+          throw new Error('email availability check failed')
+        }
+
+        const payload = (await response.json()) as { exists?: unknown }
+        const exists = payload.exists === true
+        emailLookupCache.current[normalizedEmail] = exists
+        setEmailAvailability(exists ? 'taken' : 'available')
+      } catch (requestError) {
+        if (requestError instanceof DOMException && requestError.name === 'AbortError') {
+          return
+        }
+
+        setEmailAvailability('error')
+      }
+    }, 450)
+
+    return () => {
+      window.clearTimeout(debounceTimer)
+      controller.abort()
+    }
+  }, [email, touched.email, fieldErrors.email])
+
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
@@ -99,6 +160,13 @@ export function SignupForm() {
     })
     if (!parsed.success) {
       validateInRealTime({ email, password, confirm: confirmValue, name }, allTouched)
+      return
+    }
+
+    if (emailAvailability !== 'available') {
+      if (emailAvailability === 'taken') {
+        setFieldErrors((prev) => ({ ...prev, email: duplicateAccountMessage }))
+      }
       return
     }
 
@@ -194,8 +262,18 @@ export function SignupForm() {
         required
         type="email"
         value={email}
-        error={fieldErrors.email}
+        error={
+          fieldErrors.email ||
+          (emailAvailability === 'taken'
+            ? duplicateAccountMessage
+            : emailAvailability === 'error'
+              ? 'Could not verify email availability right now.'
+              : undefined)
+        }
       />
+      {emailAvailability === 'checking' ? (
+        <p className="-mt-2 text-xs text-[#a1a1aa]">Checking email availability...</p>
+      ) : null}
       <label className="block space-y-2 text-base">
         <span className="font-display text-xs uppercase tracking-wider text-[#a1a1aa]">Password</span>
         <div className="relative">

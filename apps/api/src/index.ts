@@ -5,6 +5,7 @@ import { webhookRoutes } from './routes/webhook'
 import { eventsRoutes } from './routes/events'
 import { endpointsRoutes } from './routes/endpoints'
 import { meRoutes } from './routes/me'
+import { publicAuthRoutes } from './routes/public-auth'
 import { authMiddleware } from './middleware/auth'
 import { startWorker } from './worker'
 
@@ -103,6 +104,7 @@ app.get('/health', async (c) => {
 
 // Rutas
 app.route('/webhook', webhookRoutes)
+app.route('/auth', publicAuthRoutes)
 
 // Todo lo demás requiere JWT válido
 app.use('*', authMiddleware)
