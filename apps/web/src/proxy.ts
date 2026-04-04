@@ -125,6 +125,10 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
   const pathname = request.nextUrl.pathname
   const searchParams = request.nextUrl.searchParams
   const isDashboardRoute = pathname.startsWith('/dashboard')
@@ -153,7 +157,7 @@ export async function proxy(request: NextRequest) {
   }
 
   if (user.email_confirmed_at && (isDashboardRoute || isOnboardingRoute || isAuthRoute)) {
-    const accessToken = getAccessTokenFromCookies(request)
+    const accessToken = session?.access_token ?? getAccessTokenFromCookies(request)
     if (!accessToken) {
       if (isAuthRoute) {
         const url = request.nextUrl.clone()

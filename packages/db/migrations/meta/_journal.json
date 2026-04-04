@@ -78,6 +78,13 @@
       "when": 1775750400000,
       "tag": "0011_user_email_confirmed_realtime",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1775751400000,
+      "tag": "0012_sync_auth-users_public_users",
+      "breakpoints": true
     }
   ]
 }

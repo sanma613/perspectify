@@ -77,6 +77,14 @@ meRoutes.patch('/', async (c) => {
   }
 
   await db
+    .insert(users)
+    .values({
+      id: authUser.id,
+      email: authUser.email ?? '',
+    })
+    .onConflictDoNothing()
+
+  await db
     .update(users)
     .set(updates)
     .where(eq(users.id, authUser.id))
