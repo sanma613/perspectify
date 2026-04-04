@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Info, Loader2, Mail } from 'lucide-react'
+import { CheckCircle2, Info, Loader2, Mail } from 'lucide-react'
 import { createClient } from '../../../lib/supabase/client'
 import { AuthPanel } from '../_components/auth-panel'
 
@@ -19,6 +19,7 @@ export function ConfirmEmailCard() {
   const [isChecking, setIsChecking] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState<string | null>(null)
+  const [isAlreadyConfirmed, setIsAlreadyConfirmed] = useState(false)
 
   const isNewUser =
     typeof window !== 'undefined' && new URL(window.location.href).searchParams.get('new') === 'true'
@@ -36,6 +37,10 @@ export function ConfirmEmailCard() {
 
       if (user?.email) {
         setEmail(user.email)
+      }
+
+      if (user?.email_confirmed_at) {
+        setIsAlreadyConfirmed(true)
       }
     })()
   }, [])
@@ -177,6 +182,38 @@ export function ConfirmEmailCard() {
     setMessage('Confirmation email sent again.')
   }
 
+  if (isAlreadyConfirmed) {
+    return (
+      <AuthPanel title="Email confirmed" subtitle="Your email is already confirmed.">
+        <div className="space-y-4">
+          <div className="grid place-items-center">
+            <div className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-emerald-400/25 bg-emerald-400/10">
+              <CheckCircle2 className="h-6 w-6 text-emerald-300" />
+            </div>
+          </div>
+
+          <p className="text-center text-sm text-[#a1a1aa]">
+            Your account is ready. Return to the device where you registered and sign in there, or continue here.
+          </p>
+
+          <button
+            className="h-11 w-full rounded-lg bg-[#22c55e] text-sm font-medium text-[#031108]"
+            onClick={() => {
+              router.replace('/dashboard')
+            }}
+            type="button"
+          >
+            Go to dashboard →
+          </button>
+
+          <Link className="block text-center text-sm text-[#a1a1aa] hover:text-white" href="/login">
+            Back to login
+          </Link>
+        </div>
+      </AuthPanel>
+    )
+  }
+
   return (
     <AuthPanel title="Check your inbox" subtitle={`We sent a confirmation link to ${email || 'your email'}.`}>
       <div className="space-y-4">
@@ -186,13 +223,12 @@ export function ConfirmEmailCard() {
           </div>
         </div>
 
-        <p className="text-center text-sm text-[#a1a1aa]">Click the link on any device. Your session will start here automatically.</p>
+        <p className="text-center text-sm text-[#a1a1aa]">Click the confirmation link to finish setting up your account.</p>
 
         <div className="mt-4 flex items-start gap-3 rounded-xl border border-white/6 bg-white/3 p-4 text-left">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
           <p className="text-xs leading-relaxed text-zinc-500">
-            Confirming on your phone? No problem. Once you click the link, this page will log you in automatically
-            within a few seconds.
+            If this page does not update automatically, click the button below after confirming your email.
           </p>
         </div>
 

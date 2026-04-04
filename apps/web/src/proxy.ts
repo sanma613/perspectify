@@ -134,20 +134,23 @@ export async function proxy(request: NextRequest) {
   }
 
   if (user.email_confirmed_at && pathname === '/dashboard') {
+    const bypassOnboarding =
+      searchParams.get('skipOnboarding') === '1' ||
+      searchParams.get('skipOnboarding') === 'true'
     const createdAtMs = user.created_at ? new Date(user.created_at).getTime() : Number.NaN
     const isRecentlyCreated = Number.isFinite(createdAtMs) && Date.now() - createdAtMs < 10 * 60 * 1000
-    const isNewUser = isRecentlyCreated || searchParams.get('new') === 'true'
+    const isNewUser = !bypassOnboarding && (isRecentlyCreated || searchParams.get('new') === 'true')
 
     if (isNewUser) {
       const accessToken = getAccessTokenFromCookies(request)
       if (accessToken) {
         const hasEndpoints = await getHasEndpoints(accessToken)
-        if (hasEndpoints) return supabaseResponse
+        if (!hasEndpoints) {
+          const url = request.nextUrl.clone()
+          url.pathname = '/onboarding'
+          return NextResponse.redirect(url)
+        }
       }
-
-      const url = request.nextUrl.clone()
-      url.pathname = '/onboarding'
-      return NextResponse.redirect(url)
     }
   }
 
