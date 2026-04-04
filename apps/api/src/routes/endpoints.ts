@@ -23,6 +23,13 @@ const ENDPOINTS_USER_DESTINATION_UNIQUE = 'endpoints_user_destination_unique'
 const SECRET_PREFIX = 'whsec_'
 const MIN_SECRET_SUFFIX_LENGTH = 13
 
+async function markOnboardingCompletedIfNeeded(userId: string) {
+  await db
+    .update(users)
+    .set({ onboardingCompleted: true })
+    .where(and(eq(users.id, userId), eq(users.onboardingCompleted, false)))
+}
+
 function isUniqueViolation(error: unknown): error is { code: string; constraint?: string } {
   return (
     typeof error === 'object' &&
@@ -222,10 +229,7 @@ endpointsRoutes.post('/', async (c) => {
   }
 
   if (secret.length > 0) {
-    await db
-      .update(users)
-      .set({ onboardingCompleted: true })
-      .where(and(eq(users.id, userId), eq(users.onboardingCompleted, false)))
+    await markOnboardingCompletedIfNeeded(userId)
   }
 
   return c.json(
@@ -437,10 +441,7 @@ endpointsRoutes.patch('/:id', async (c) => {
   }
 
   if (shouldMarkOnboardingCompleted) {
-    await db
-      .update(users)
-      .set({ onboardingCompleted: true })
-      .where(and(eq(users.id, userId), eq(users.onboardingCompleted, false)))
+    await markOnboardingCompletedIfNeeded(userId)
   }
 
   if (!changed) {

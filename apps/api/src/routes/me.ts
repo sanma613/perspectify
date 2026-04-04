@@ -1,11 +1,22 @@
 import { Hono } from 'hono'
-import { db, users, getPlanLimits } from '@perspectify/db'
-import { eq } from 'drizzle-orm'
+import { db, users, endpoints, getPlanLimits } from '@perspectify/db'
+import { and, eq } from 'drizzle-orm'
+import { decrypt } from '../lib/encryption'
 
 export const meRoutes = new Hono()
 
 interface UpdateMeBody {
   onboardingCompleted?: boolean
+}
+
+async function markOnboardingCompleted(userId: string): Promise<boolean> {
+  const updatedRows = await db
+    .update(users)
+    .set({ onboardingCompleted: true })
+    .where(and(eq(users.id, userId), eq(users.onboardingCompleted, false)))
+    .returning({ id: users.id })
+
+  return updatedRows.length > 0
 }
 
 // GET /me
@@ -43,11 +54,26 @@ meRoutes.get('/', async (c) => {
     row = inserted
   }
 
+  const endpointSecrets = await db
+    .select({ secret: endpoints.secret })
+    .from(endpoints)
+    .where(eq(endpoints.userId, authUser.id))
+
+  const hasConfiguredEndpoint = endpointSecrets.some(({ secret }) => {
+    try {
+      return decrypt(secret).trim().length > 0
+    } catch {
+      // Treat malformed stored payloads as configured to avoid blocking users.
+      return true
+    }
+  })
+
   return c.json({
     id: row.id,
     email: row.email,
     plan: row.plan,
     onboardingCompleted: row.onboardingCompleted,
+    hasConfiguredEndpoint,
     limits: getPlanLimits(row.plan),
     usage: {
       replaysUsed: Number(row.freeReplaysUsed ?? 0),
@@ -66,14 +92,12 @@ meRoutes.patch('/', async (c) => {
     return c.json({ error: 'Invalid JSON body' }, 400)
   }
 
-  const updates: { onboardingCompleted?: boolean } = {}
-
-  if (typeof body.onboardingCompleted === 'boolean') {
-    updates.onboardingCompleted = body.onboardingCompleted
+  if (typeof body.onboardingCompleted !== 'boolean') {
+    return c.json({ changed: false })
   }
 
-  if (Object.keys(updates).length === 0) {
-    return c.json({ changed: false })
+  if (body.onboardingCompleted === false) {
+    return c.json({ changed: false, ignored: true })
   }
 
   await db
@@ -84,10 +108,7 @@ meRoutes.patch('/', async (c) => {
     })
     .onConflictDoNothing()
 
-  await db
-    .update(users)
-    .set(updates)
-    .where(eq(users.id, authUser.id))
+  const changed = await markOnboardingCompleted(authUser.id)
 
-  return c.json({ changed: true })
+  return c.json({ changed })
 })

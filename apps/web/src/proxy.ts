@@ -5,7 +5,12 @@ function getApiBaseUrl() {
   return process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
 }
 
-async function getOnboardingCompleted(accessToken: string): Promise<boolean | null> {
+interface OnboardingState {
+  onboardingCompleted: boolean | null
+  hasConfiguredEndpoint: boolean
+}
+
+async function getOnboardingState(accessToken: string): Promise<OnboardingState> {
   try {
     const response = await fetch(`${getApiBaseUrl()}/me`, {
       headers: {
@@ -15,22 +20,41 @@ async function getOnboardingCompleted(accessToken: string): Promise<boolean | nu
       signal: AbortSignal.timeout(3000),
     })
 
-    if (!response.ok) return null
+    if (!response.ok) {
+      return {
+        onboardingCompleted: null,
+        hasConfiguredEndpoint: false,
+      }
+    }
 
     const data = (await response.json()) as unknown
-    if (
+
+    const onboardingCompleted =
       data &&
       typeof data === 'object' &&
       'onboardingCompleted' in data &&
       typeof (data as { onboardingCompleted: unknown }).onboardingCompleted === 'boolean'
-    ) {
-      return (data as { onboardingCompleted: boolean }).onboardingCompleted
-    }
+        ? (data as { onboardingCompleted: boolean }).onboardingCompleted
+        : null
 
-    return null
+    const hasConfiguredEndpoint =
+      !!data &&
+      typeof data === 'object' &&
+      'hasConfiguredEndpoint' in data &&
+      typeof (data as { hasConfiguredEndpoint: unknown }).hasConfiguredEndpoint === 'boolean'
+        ? (data as { hasConfiguredEndpoint: boolean }).hasConfiguredEndpoint
+        : false
+
+    return {
+      onboardingCompleted,
+      hasConfiguredEndpoint,
+    }
   } catch {
     // API hiccups should not lock authenticated users behind redirects.
-    return null
+    return {
+      onboardingCompleted: null,
+      hasConfiguredEndpoint: false,
+    }
   }
 }
 
@@ -171,7 +195,9 @@ export async function proxy(request: NextRequest) {
     const bypassOnboarding =
       searchParams.get('skipOnboarding') === '1' ||
       searchParams.get('skipOnboarding') === 'true'
-    let onboardingCompleted = await getOnboardingCompleted(accessToken)
+    const onboardingState = await getOnboardingState(accessToken)
+    let onboardingCompleted = onboardingState.onboardingCompleted
+    const hasConfiguredEndpoint = onboardingState.hasConfiguredEndpoint
 
     // Persist explicit onboarding skip even when /me read is flaky.
     if (bypassOnboarding && onboardingCompleted !== true) {
@@ -181,14 +207,17 @@ export async function proxy(request: NextRequest) {
       }
     }
 
-    if (isOnboardingRoute && onboardingCompleted === true) {
+    if (isOnboardingRoute && (onboardingCompleted === true || hasConfiguredEndpoint)) {
       const url = request.nextUrl.clone()
       url.pathname = '/dashboard'
       return NextResponse.redirect(url)
     }
 
     const shouldRequireOnboarding =
-      (isDashboardRoute || isAuthRoute) && !bypassOnboarding && onboardingCompleted === false
+      (isDashboardRoute || isAuthRoute) &&
+      !bypassOnboarding &&
+      onboardingCompleted === false &&
+      !hasConfiguredEndpoint
 
     if (shouldRequireOnboarding) {
       const url = request.nextUrl.clone()

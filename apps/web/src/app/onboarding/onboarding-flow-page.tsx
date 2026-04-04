@@ -473,6 +473,12 @@ export function OnboardingFlowPage() {
         }),
       })
 
+      // Redundant/idempotent safeguard for completion state sync.
+      await apiFetch('/me', token, {
+        method: 'PATCH',
+        body: JSON.stringify({ onboardingCompleted: true }),
+      })
+
       completedRef.current = true
       router.push('/dashboard')
     } catch (error) {
