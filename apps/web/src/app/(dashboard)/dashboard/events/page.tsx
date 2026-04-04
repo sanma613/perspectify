@@ -1,12 +1,13 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, ArrowDown, ChevronDown, ChevronRight, Copy, ExternalLink, Loader2 } from 'lucide-react'
-import type { EventAttemptResponse, EventDetailResponse, EventResponse } from '../../../../lib/api-types'
+import type { DeliveryResponse, EventAttemptResponse, EventDetailResponse, EventResponse } from '../../../../lib/api-types'
 import { getAccessToken } from '../../../../lib/access-token'
 import { apiFetch } from '../../../../lib/http'
 import { useDashboardData } from '../../../../lib/use-dashboard-data'
+import { useEventAttemptsRealtime } from '../../../../lib/use-event-attempts-realtime'
 import { usePaginatedEvents } from '../../../../lib/use-paginated-events'
 import { useMobile } from '../../../../lib/hooks/use-mobile'
 import { BottomSheet } from '../_components/ui/bottom-sheet'
@@ -54,6 +55,11 @@ export default function EventsPage() {
   const [attemptsCache, setAttemptsCache] = useState<Record<string, EventAttemptResponse[]>>({})
   const [loadingMap, setLoadingMap] = useState<Record<string, boolean>>({})
   const [rescuePendingId, setRescuePendingId] = useState<string | null>(null)
+
+  const { realtimeAttempts, realtimeDeliveries } = useEventAttemptsRealtime({
+    eventId: expandedId,
+    enabled: !isMobile && Boolean(expandedId),
+  })
 
   const selectedEndpointIds = endpointFilter === 'all' ? [] : [endpointFilter]
 
@@ -137,6 +143,23 @@ export default function EventsPage() {
       setRescuePendingId(null)
     }
   }
+
+  useEffect(() => {
+    if (!expandedId || realtimeDeliveries.length === 0) return
+
+    setDetailCache((current) => {
+      const detail = current[expandedId]
+      if (!detail) return current
+
+      return {
+        ...current,
+        [expandedId]: {
+          ...detail,
+          deliveries: mergeDeliveries(detail.deliveries ?? [], realtimeDeliveries),
+        },
+      }
+    })
+  }, [expandedId, realtimeDeliveries])
 
   if (dashboardLoading || loading) {
     return <div className="h-32 animate-pulse rounded-xl border border-white/10 bg-zinc-900" />
@@ -283,7 +306,8 @@ export default function EventsPage() {
 
       <div className="overflow-hidden rounded-xl border border-white/10 bg-zinc-950/70">
         {filtered.map((event) => {
-          const attempts = attemptsCache[event.id] ?? detailCache[event.id]?.eventAttempts ?? event.eventAttempts
+          const baseAttempts = attemptsCache[event.id] ?? detailCache[event.id]?.eventAttempts ?? event.eventAttempts
+          const attempts = event.id === expandedId ? mergeAttempts(baseAttempts, realtimeAttempts) : baseAttempts
           const detail = detailCache[event.id]
           const expanded = expandedId === event.id
           const loadingDetail = loadingMap[event.id] ?? false
@@ -582,4 +606,30 @@ function relativeTime(value: string) {
   const hrs = Math.floor(mins / 60)
   if (hrs < 24) return `${hrs}h ago`
   return `${Math.floor(hrs / 24)}d ago`
+}
+
+function mergeAttempts(base: EventAttemptResponse[], incoming: EventAttemptResponse[]) {
+  if (incoming.length === 0) return base
+
+  const map = new Map<string, EventAttemptResponse>()
+  for (const attempt of base) {
+    map.set(`${attempt.eventId}:${attempt.attempt}`, attempt)
+  }
+  for (const attempt of incoming) {
+    map.set(`${attempt.eventId}:${attempt.attempt}`, attempt)
+  }
+  return Array.from(map.values()).sort((a, b) => a.attempt - b.attempt)
+}
+
+function mergeDeliveries(base: DeliveryResponse[], incoming: DeliveryResponse[]) {
+  if (incoming.length === 0) return base
+
+  const map = new Map<string, DeliveryResponse>()
+  for (const delivery of base) {
+    map.set(`${delivery.eventId}:${delivery.attempt}`, delivery)
+  }
+  for (const delivery of incoming) {
+    map.set(`${delivery.eventId}:${delivery.attempt}`, delivery)
+  }
+  return Array.from(map.values()).sort((a, b) => a.attempt - b.attempt)
 }

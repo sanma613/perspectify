@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Copy, ExternalLink, Loader2, Zap } from 'lucide-react'
 import { getAccessToken } from '../../../../lib/access-token'
-import type { EventAttemptResponse, EventDetailResponse, EventResponse } from '../../../../lib/api-types'
+import type { DeliveryResponse, EventAttemptResponse, EventDetailResponse, EventResponse } from '../../../../lib/api-types'
 import { apiFetch } from '../../../../lib/http'
 import { useMobile } from '../../../../lib/hooks/use-mobile'
+import { useEventAttemptsRealtime } from '../../../../lib/use-event-attempts-realtime'
 import { BottomSheet } from './ui/bottom-sheet'
 import { SlideOver } from './ui/slide-over'
 import { CollapsibleSection } from '../../../../components/collapsible-section'
@@ -61,11 +62,15 @@ export function EventDetailDrawer({
   const selectedId = event?.id ?? null
   const detail = selectedId ? detailCache[selectedId] : undefined
   const effectiveEvent = detail ?? event
+  const { realtimeAttempts, realtimeDeliveries } = useEventAttemptsRealtime({
+    eventId: selectedId,
+    enabled: open && Boolean(selectedId),
+  })
 
   const attempts = useMemo(() => {
-    const source = effectiveEvent?.eventAttempts ?? []
+    const source = mergeAttempts(effectiveEvent?.eventAttempts ?? [], realtimeAttempts)
     return [...source].sort((a, b) => a.attempt - b.attempt)
-  }, [effectiveEvent?.eventAttempts])
+  }, [effectiveEvent?.eventAttempts, realtimeAttempts])
 
   const lastAttempt = attempts[attempts.length - 1] ?? null
 
@@ -86,6 +91,23 @@ export function EventDetailDrawer({
     setActiveTab('overview')
     void ensureDetail()
   }, [open, ensureDetail])
+
+  useEffect(() => {
+    if (!selectedId || realtimeDeliveries.length === 0) return
+
+    setDetailCache((current) => {
+      const cached = current[selectedId]
+      if (!cached) return current
+
+      return {
+        ...current,
+        [selectedId]: {
+          ...cached,
+          deliveries: mergeDeliveries(cached.deliveries ?? [], realtimeDeliveries),
+        },
+      }
+    })
+  }, [realtimeDeliveries, selectedId])
 
   if (!effectiveEvent) return null
 
@@ -383,4 +405,30 @@ function MetaCell({
       </div>
     </div>
   )
+}
+
+function mergeAttempts(base: EventAttemptResponse[], incoming: EventAttemptResponse[]) {
+  if (incoming.length === 0) return base
+
+  const map = new Map<string, EventAttemptResponse>()
+  for (const attempt of base) {
+    map.set(`${attempt.eventId}:${attempt.attempt}`, attempt)
+  }
+  for (const attempt of incoming) {
+    map.set(`${attempt.eventId}:${attempt.attempt}`, attempt)
+  }
+  return Array.from(map.values())
+}
+
+function mergeDeliveries(base: DeliveryResponse[], incoming: DeliveryResponse[]) {
+  if (incoming.length === 0) return base
+
+  const map = new Map<string, DeliveryResponse>()
+  for (const delivery of base) {
+    map.set(`${delivery.eventId}:${delivery.attempt}`, delivery)
+  }
+  for (const delivery of incoming) {
+    map.set(`${delivery.eventId}:${delivery.attempt}`, delivery)
+  }
+  return Array.from(map.values()).sort((a, b) => a.attempt - b.attempt)
 }
