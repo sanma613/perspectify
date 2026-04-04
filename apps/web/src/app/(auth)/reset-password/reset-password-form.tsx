@@ -55,7 +55,6 @@ export function ResetPasswordForm() {
     setMessage('Password updated successfully. Redirecting to login...')
     setTimeout(() => {
       router.replace('/login')
-      router.refresh()
     }, 1200)
   }
 

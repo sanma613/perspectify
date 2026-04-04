@@ -8,8 +8,6 @@ import { createClient } from '../../../lib/supabase/client'
 import { AuthPanel } from '../_components/auth-panel'
 
 const COOLDOWN_SECONDS = 60
-const POLL_INTERVAL_MS = 4000
-const POLL_MAX_CHECKS = 20
 
 export function ConfirmEmailCard() {
   const router = useRouter()
@@ -17,7 +15,6 @@ export function ConfirmEmailCard() {
 
   const [email, setEmail] = useState<string>('')
   const [cooldown, setCooldown] = useState(COOLDOWN_SECONDS)
-  const [pollCount, setPollCount] = useState(0)
   const [isResending, setIsResending] = useState(false)
   const [isChecking, setIsChecking] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -53,7 +50,6 @@ export function ConfirmEmailCard() {
 
   async function routeAfterConfirm() {
     router.replace(isNewUser ? '/dashboard?new=true' : '/dashboard')
-    router.refresh()
   }
 
   async function checkEmailConfirmed() {
@@ -77,28 +73,6 @@ export function ConfirmEmailCard() {
 
     await routeAfterConfirm()
   }
-
-  useEffect(() => {
-    if (pollCount >= POLL_MAX_CHECKS) return
-
-    const polling = window.setInterval(() => {
-      void (async () => {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession()
-
-        if (session?.user?.email_confirmed_at) {
-          window.clearInterval(polling)
-          await routeAfterConfirm()
-          return
-        }
-
-        setPollCount((value) => value + 1)
-      })()
-    }, POLL_INTERVAL_MS)
-
-    return () => window.clearInterval(polling)
-  }, [pollCount, supabase])
 
   async function resendEmail() {
     if (cooldown > 0 || !email) return

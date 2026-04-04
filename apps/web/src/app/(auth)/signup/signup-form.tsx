@@ -74,7 +74,6 @@ export function SignupForm() {
 
     const emailParam = encodeURIComponent(parsed.data.email)
     router.replace(`/confirm-email?email=${emailParam}&new=true`)
-    router.refresh()
   }
 
   return (

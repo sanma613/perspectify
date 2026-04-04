@@ -143,7 +143,6 @@ function SidebarFooter({ displayName, email }: { displayName: string; email: str
   async function onLogout() {
     await supabase.auth.signOut()
     router.replace('/login')
-    router.refresh()
   }
 
   return (
@@ -288,7 +287,6 @@ function MobileTopBar({ displayName, email }: { displayName: string; email: stri
                 await supabase.auth.signOut()
                 setPopoverOpen(false)
                 router.push('/login')
-                router.refresh()
               }}
               type="button"
             >

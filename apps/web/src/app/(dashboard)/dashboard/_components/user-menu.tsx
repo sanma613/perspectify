@@ -24,7 +24,6 @@ export function UserMenu({
     await supabase.auth.signOut()
     setIsLoggingOut(false)
     router.replace('/login')
-    router.refresh()
   }
 
   const menuRef = useRef<HTMLDivElement | null>(null)

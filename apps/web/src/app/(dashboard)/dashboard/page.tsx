@@ -72,7 +72,7 @@ function WaitingForFirstEvent({ endpointItems }: { endpointItems: Array<{ name: 
       <a
         className="mt-2 inline-flex h-11 items-center rounded-lg border border-white/10 bg-white/5 px-4 text-sm text-white"
         href="https://dashboard.stripe.com/webhooks"
-        rel="noreferrer"
+        rel="noopener noreferrer"
         target="_blank"
       >
         Open Stripe Webhooks
@@ -85,7 +85,7 @@ function WaitingForFirstEvent({ endpointItems }: { endpointItems: Array<{ name: 
           <a
             className="inline-flex text-xs text-[#22c55e] underline underline-offset-2"
             href="https://docs.stripe.com/stripe-cli/install"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             target="_blank"
           >
             Stripe CLI download
@@ -126,7 +126,7 @@ function WaitingForFirstEvent({ endpointItems }: { endpointItems: Array<{ name: 
           <a
             className="mt-1 inline-flex text-xs text-[#22c55e] underline underline-offset-2"
             href="https://docs.stripe.com/stripe-cli/"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             target="_blank"
           >
             Stripe CLI docs

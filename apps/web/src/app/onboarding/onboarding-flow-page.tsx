@@ -1129,7 +1129,21 @@ function StepThree({
       <div className="mt-6 space-y-5">
         <InstructionNumber title="In Stripe, click 'Add destination'" />
 
-        <InstructionNumber number={2} title="In the URL field, paste your Perspectify URL">
+        <InstructionNumber number={2} title="Select which events to listen to">
+          <p className="mt-1 text-xs text-zinc-500">We recommend starting with these:</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <EventTag label="payment_intent.succeeded" />
+            <EventTag label="charge.failed" />
+            <EventTag label="payment_intent.payment_failed" />
+          </div>
+          <p className="mt-2 text-xs text-zinc-600">
+            You can select "All events", but it is usually better to choose a closed set. More events can consume
+            your plan limit faster and add unnecessary load to your automations/app. If you know you need all events,
+            go ahead.
+          </p>
+        </InstructionNumber>
+
+        <InstructionNumber number={3} title="After selecting 'Webhook endpoint', paste your Perspectify endpoint URL">
           <p className="mt-2 text-xs text-zinc-500">This URL is already generated. Paste this exact value in Stripe.</p>
           <div className="mt-2 flex gap-2">
             <div className="h-11 flex-1 rounded-xl border border-green-500/30 bg-[#1a1a1a] px-3 font-mono text-xs text-zinc-200 cursor-text select-text truncate whitespace-nowrap leading-[44px] overflow-hidden">
@@ -1145,20 +1159,6 @@ function StepThree({
               {copied ? 'Copied' : 'Copy'}
             </button>
           </div>
-        </InstructionNumber>
-
-        <InstructionNumber number={3} title="Select which events to listen to">
-          <p className="mt-1 text-xs text-zinc-500">We recommend starting with these:</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <EventTag label="payment_intent.succeeded" />
-            <EventTag label="charge.failed" />
-            <EventTag label="payment_intent.payment_failed" />
-          </div>
-          <p className="mt-2 text-xs text-zinc-600">
-            You can select "All events", but it is usually better to choose a closed set. More events can consume
-            your plan limit faster and add unnecessary load to your automations/app. If you know you need all events,
-            go ahead.
-          </p>
         </InstructionNumber>
 
         <InstructionNumber number={4} title="Click 'Add endpoint' - Stripe will show your webhook secret">

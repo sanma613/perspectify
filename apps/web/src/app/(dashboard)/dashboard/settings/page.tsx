@@ -3,7 +3,6 @@
 import { z } from 'zod'
 import { useMemo, useState, useEffect } from 'react'
 import { PLANS } from '../../../../lib/plans'
-import { useRouter } from 'next/navigation'
 import { Eye, EyeOff, Loader2, Pencil } from 'lucide-react'
 import { createClient } from '../../../../lib/supabase/client'
 import { passwordStrength } from '../../../../lib/password-strength'
@@ -18,7 +17,6 @@ import { UpgradeCTA } from '../_components/ui/upgrade-cta'
 export default function SettingsPage() {
   const { me, endpoints, loading, error, eventsThisMonth } = useDashboardData()
   const isMobile = useMobile()
-  const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const currentPasswordVisibility = usePasswordVisibility()
   const newPasswordVisibility = usePasswordVisibility()
@@ -127,7 +125,6 @@ export default function SettingsPage() {
     setNameValue(trimmed)
     setNameError('')
     setIsEditingName(false)
-    router.refresh()
   }
 
   function resetPasswordForm(closeDesktop = false, closeMobile = false) {

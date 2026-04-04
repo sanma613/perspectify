@@ -133,7 +133,6 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      void fetchDashboardData(true)
       subscribe()
     }
 

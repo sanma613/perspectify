@@ -511,9 +511,19 @@ export function usePaginatedEvents({
       return
     }
 
+    setBufferedEvents((current) => {
+      if (current.length === 0) return current
+      const merged = dedupeEvents([...current, ...eventsRef.current])
+      updateCache(merged, nextCursorRef.current, hasMore, totalCount)
+      return []
+    })
+    setEvents((current) => {
+      const merged = dedupeEvents([...bufferedEvents, ...current])
+      updateCache(merged, nextCursorRef.current, hasMore, totalCount)
+      return merged
+    })
     resetPendingState()
-    await syncHead(true)
-  }, [resetPendingState, syncHead])
+  }, [bufferedEvents, hasMore, resetPendingState, totalCount, updateCache])
 
   useEffect(() => {
     if (!activeEndpointIdsKey) return
@@ -589,12 +599,6 @@ export function usePaginatedEvents({
         return
       }
 
-      resetPendingState()
-      if (headRefreshTimeoutRef.current) {
-        window.clearTimeout(headRefreshTimeoutRef.current)
-        headRefreshTimeoutRef.current = null
-      }
-      void syncHead()
       subscribe()
     }
 

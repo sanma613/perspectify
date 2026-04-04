@@ -53,12 +53,10 @@ export function LoginForm() {
 
     if (!data.user?.email_confirmed_at) {
       router.replace('/confirm-email')
-      router.refresh()
       return
     }
 
     router.replace('/dashboard')
-    router.refresh()
   }
 
   return (
