@@ -25,7 +25,6 @@ export const users = pgTable('users', {
   plan:      planEnum('plan').default('free').notNull(),
   onboardingCompleted: boolean('onboarding_completed').default(false).notNull(),
   freeReplaysUsed: integer('free_replays_used').default(0).notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 
 // ── Endpoints ─────────────────────────────────────────────
