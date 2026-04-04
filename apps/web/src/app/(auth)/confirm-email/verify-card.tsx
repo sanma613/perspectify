@@ -146,13 +146,22 @@ export function ConfirmEmailCard() {
   useEffect(() => {
     let active = true
     let cleanupChannel: (() => void) | null = null
+    let retryInterval: number | null = null
 
     async function subscribeToConfirmationChanges() {
       const {
         data: { user },
       } = await supabase.auth.getUser()
 
-      if (!active || !user?.id) return
+      if (!active) return
+
+      if (!user?.id) {
+        // No local session yet: keep trying password sign-in after external confirmation.
+        retryInterval = window.setInterval(() => {
+          void tryPendingPasswordSignIn(true)
+        }, 4000)
+        return
+      }
 
       if (user.email) {
         setEmail(user.email)
@@ -193,6 +202,9 @@ export function ConfirmEmailCard() {
 
     return () => {
       active = false
+      if (retryInterval !== null) {
+        window.clearInterval(retryInterval)
+      }
       if (cleanupChannel) cleanupChannel()
     }
   }, [supabase])

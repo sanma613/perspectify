@@ -93,6 +93,7 @@ export function OnboardingFlowPage() {
   const [stepThreeError, setStepThreeError] = useState<string | null>(null)
   const [isPreparingEndpoint, setIsPreparingEndpoint] = useState(false)
   const [isCompletingSetup, setIsCompletingSetup] = useState(false)
+  const [isSkippingOnboarding, setIsSkippingOnboarding] = useState(false)
   const [existingEndpoints, setExistingEndpoints] = useState<EndpointSummary[]>([])
   const [draftEndpointId, setDraftEndpointId] = useState<string | null>(null)
   const [draftTokenHash, setDraftTokenHash] = useState('')
@@ -527,6 +528,24 @@ export function OnboardingFlowPage() {
     })
   }
 
+  async function handleSkipOnboarding() {
+    if (isSkippingOnboarding) return
+
+    setIsSkippingOnboarding(true)
+
+    try {
+      const token = await getAccessToken()
+      await apiFetch('/me', token, {
+        method: 'PATCH',
+        body: JSON.stringify({ onboardingCompleted: true }),
+      })
+    } catch {
+      // Proxy also persists this via skipOnboarding query param.
+    } finally {
+      router.push('/dashboard?skipOnboarding=1')
+    }
+  }
+
   return (
     <div
       className="min-h-dvh bg-[#090909]"
@@ -543,12 +562,26 @@ export function OnboardingFlowPage() {
             <span className="font-display text-lg font-bold tracking-tight text-white">Perspectify</span>
           </Link>
           <div className="text-sm text-zinc-500">
-            <Link className="hidden md:inline transition hover:text-white" href="/dashboard?skipOnboarding=1">
+            <button
+              className="hidden md:inline transition hover:text-white disabled:opacity-60"
+              disabled={isSkippingOnboarding}
+              onClick={() => {
+                void handleSkipOnboarding()
+              }}
+              type="button"
+            >
               Go to dashboard →
-            </Link>
-            <Link className="md:hidden text-sm text-zinc-500" href="/dashboard?skipOnboarding=1">
+            </button>
+            <button
+              className="md:hidden text-sm text-zinc-500 disabled:opacity-60"
+              disabled={isSkippingOnboarding}
+              onClick={() => {
+                void handleSkipOnboarding()
+              }}
+              type="button"
+            >
               Go to dashboard →
-            </Link>
+            </button>
           </div>
         </div>
       </header>

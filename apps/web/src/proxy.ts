@@ -173,7 +173,8 @@ export async function proxy(request: NextRequest) {
       searchParams.get('skipOnboarding') === 'true'
     let onboardingCompleted = await getOnboardingCompleted(accessToken)
 
-    if (bypassOnboarding && onboardingCompleted === false) {
+    // Persist explicit onboarding skip even when /me read is flaky.
+    if (bypassOnboarding && onboardingCompleted !== true) {
       const markedCompleted = await setOnboardingCompleted(accessToken)
       if (markedCompleted) {
         onboardingCompleted = true

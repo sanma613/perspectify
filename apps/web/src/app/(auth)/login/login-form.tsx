@@ -47,6 +47,17 @@ export function LoginForm() {
     setIsLoading(false)
 
     if (signInError) {
+      const normalizedMessage = signInError.message.toLowerCase()
+      if (
+        normalizedMessage.includes('email not confirmed') ||
+        normalizedMessage.includes('not confirmed')
+      ) {
+        sessionStorage.setItem('pending_confirmation_email', parsed.data.email)
+        sessionStorage.setItem('pending_confirmation_password', parsed.data.password)
+        router.replace(`/confirm-email?email=${encodeURIComponent(parsed.data.email)}`)
+        return
+      }
+
       setError(signInError.message)
       return
     }
