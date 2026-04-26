@@ -1,116 +1,163 @@
 # Perspectify
 
-Webhook reliability layer — captura eventos de Stripe antes de que lleguen a Zapier/Make,
-reintenta con backoff exponencial, y te deja rescatar cualquier fallo con un clic.
+> **A webhook reliability layer for Stripe** — capture events before they reach Zapier/Make, persist them durably, retry failed deliveries with exponential backoff, and recover from a clean web dashboard.
 
-## Stack
+Built to solve a real pain point: Stripe's webhook retries are limited, and when a downstream integration goes down, events are silently lost. Perspectify acts as a durable buffer between Stripe and your automation tools.
 
-| Pieza         | Tecnología    | Hosting       | Costo |
-| ------------- | ------------- | ------------- | ----- |
-| Backend       | Hono + Bun    | Render free   | $0    |
-| Cron          | Bun script    | Render free   | $0    |
-| Frontend      | Next.js       | Vercel free   | $0    |
-| Base de datos | PostgreSQL    | Supabase free | $0    |
-| Queue         | pg-boss       | Supabase DB   | $0    |
-| ORM           | Drizzle       | —             | $0    |
-| Auth          | Supabase Auth | Supabase free | $0    |
+---
 
-## Estructura
+## What it does
+
+```
+Stripe ──POST──▶ Perspectify API ──▶ Postgres / pg-boss ──▶ Zapier / Make
+                      │                       │
+                   200 OK                  retry on
+                                           failure
+                                              │
+                                         Dashboard ◀── manual replay
+```
+
+1. **Stripe posts** an event to `POST /webhook/:token_hash`
+2. **API validates** the HMAC signature, deduplicates by Stripe event ID, persists with status `PENDING`, enqueues a delivery job, and immediately returns `200` to Stripe
+3. **Worker** attempts delivery to the configured destination; on failure it retries with exponential backoff:
+   ```
+   5s → 10s → 20s → 40s → 80s → 160s → 320s
+   ```
+4. **Dashboard** lists all events and delivery timelines; any failed event can be manually replayed with one click
+
+---
+
+## Tech stack
+
+| Layer | Technology | Hosting | Cost |
+|---|---|---|---|
+| API / Worker | Hono + Bun | Render | Free |
+| Cron | Bun script | Render | Free |
+| Frontend | Next.js | Vercel | Free |
+| Database | PostgreSQL | Supabase | Free |
+| Queue | pg-boss | Supabase DB | Free |
+| ORM | Drizzle | — | Free |
+| Auth | Supabase Auth | Supabase | Free |
+
+**Total infrastructure cost: $0** — the entire stack runs on free tiers, with a clear upgrade path when needed.
+
+---
+
+## Repository structure
 
 ```
 perspectify/
-  apps/
-    api/                        → Hono — webhook handler + worker
-      src/
-        routes/
-          webhook.ts            → POST /webhook/:token_hash
-          events.ts             → GET /events, POST /events/:id/replay
-        cron/
-          keepalive.ts          → ping API + Supabase cada 5min
-        worker.ts               → pg-boss delivery processor
-        index.ts
-    web/                        → Next.js — dashboard
-      src/
-        lib/supabase/
-          client.ts             → cliente browser
-          server.ts             → cliente server components
-        proxy.ts                → protege /dashboard con Supabase Auth
-  packages/
-    db/                         → Drizzle schema + cliente
-    queue/                      → pg-boss setup
-  render.yaml                   → deploy automático en Render
+├── apps/
+│   ├── api/                    # Hono app — webhook handler + worker
+│   │   └── src/
+│   │       ├── routes/
+│   │       │   ├── webhook.ts  # POST /webhook/:token_hash
+│   │       │   └── events.ts   # GET /events, POST /events/:id/replay
+│   │       ├── cron/
+│   │       │   └── keepalive.ts
+│   │       └── worker.ts       # pg-boss delivery processor
+│   └── web/                    # Next.js dashboard
+│       └── src/
+│           └── lib/supabase/
+│               ├── client.ts   # Browser Supabase client
+│               ├── server.ts   # Server-side helpers
+│               └── proxy.ts    # Auth-protected /dashboard
+├── packages/
+│   ├── db/                     # Drizzle schema + migrations
+│   └── queue/                  # pg-boss setup and helpers
+├── render.yaml
+└── turbo.json
 ```
 
-## Setup local
+---
+
+## Local setup
+
+**Prerequisites:** [Bun](https://bun.sh), a Supabase project, and Stripe credentials.
 
 ```bash
-# 1. Instalar dependencias
+# 1. Install dependencies
 bun install
 
-# 2. Variables de entorno
+# 2. Configure environment
 cp .env.example .env
-# → completar con credenciales de Supabase y Stripe
 
-# 3. Generar tipos Drizzle
+# 3. Generate Drizzle types
 bun run --cwd packages/db db:generate
 
-# 4. Correr migraciones contra Supabase
+# 4. Run migrations
 bun run --cwd packages/db db:migrate
 
-# 5. Arrancar todo
+# 5. Start all services
 bun dev
 ```
 
-## Flujo del webhook
+### Environment variables
 
-```
-Stripe
-  → POST /webhook/:token_hash
-    → verifica firma HMAC
-    → idempotencia por stripeId
-    → persiste evento (status: PENDING)
-    → encola job en pg-boss
-    → responde 200 a Stripe ✓
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | Supabase Postgres connection string |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Supabase anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
+| `STRIPE_SIGNING_SECRET` | Stripe webhook signing secret |
+| `DELIVERY_TARGET_URL` | Destination URL for webhook forwarding |
 
-pg-boss worker (mismo proceso)
-  → intenta POST al destino (Zapier/Make)
-  → éxito → status: DELIVERED
-  → fallo  → reintenta hasta 7x con backoff exponencial
-            → 5s → 10s → 20s → 40s → 80s → 160s → 320s
-  → agota reintentos → status: FAILED
+---
 
-Dashboard
-  → lista eventos con timeline de intentos
-  → POST /events/:id/replay → re-encola manualmente
-```
-
-## Deploy
+## Deployment
 
 ### Supabase
 
-1. Crear proyecto en supabase.com
-2. Copiar `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
-3. Correr migraciones: `bun run --cwd packages/db db:migrate`
+1. Create a project on [supabase.com](https://supabase.com)
+2. Copy the four Supabase env vars to your `.env`
+3. Run migrations: `bun run --cwd packages/db db:migrate`
 
-### Render (API + Cron)
+### Render
 
-1. Conectar repo en render.com
-2. Render detecta `render.yaml` automáticamente
-3. Agregar variables de entorno en el dashboard de Render
-4. Deploy automático en cada push a main
+1. Connect this repository on [render.com](https://render.com)
+2. Render auto-detects `render.yaml` and configures both services
+3. Add environment variables in the service settings
+4. Deploys automatically on push to the default branch
 
-### Vercel (Web)
+### Vercel
 
-1. Importar repo en vercel.com
-2. Root directory: `apps/web`
-3. Agregar variables de entorno `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-4. Deploy automático en cada push a main
+1. Import the repo on [vercel.com](https://vercel.com), set root directory to `apps/web`
+2. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+3. Deploys automatically on push
 
-## Escalar cuando sea el momento
+---
 
-| Ahora         | Después              |
-| ------------- | -------------------- |
-| Render free   | Render paid / Fly.io |
-| Supabase free | Supabase Pro         |
-| pg-boss       | BullMQ + Redis       |
-| Drizzle       | Drizzle (no cambia)  |
+## Scaling beyond free tier
+
+| Need | Upgrade path |
+|---|---|
+| More compute / concurrency | Render paid or Fly.io |
+| More DB throughput | Supabase Pro or self-hosted Postgres |
+| Higher job volume | Replace pg-boss with BullMQ + Redis |
+| Schema / types | Drizzle stays — ORM is provider-agnostic |
+
+---
+
+## Design decisions
+
+- **pg-boss over Redis/BullMQ** — keeps the stack to a single data store with zero extra infrastructure on the free tier. Swap in BullMQ when throughput demands it.
+- **Idempotency by Stripe event ID** — prevents duplicate processing even if Stripe retries before the worker finishes.
+- **Hono + Bun** — fast cold starts and minimal overhead, important for keeping free-tier response times within Stripe's timeout window.
+- **Keepalive cron** — free hosting sleeps idle services; a lightweight ping keeps the worker available without paying for always-on compute.
+
+---
+
+## Troubleshooting
+
+**Stripe retries are failing** — inspect delivery logs in the dashboard and verify your target endpoint is reachable and returning 2xx.
+
+**Worker not processing jobs** — check that `SUPABASE_SERVICE_ROLE_KEY` is set correctly; pg-boss needs write access to the jobs table.
+
+**Duplicate events appearing** — ensure idempotency logic is using the Stripe event ID as the dedup key, not the request ID.
+
+---
+
+## License
+
+MIT
