@@ -155,9 +155,3 @@ bun dev
 **Worker not processing jobs** — check that `SUPABASE_SERVICE_ROLE_KEY` is set correctly; pg-boss needs write access to the jobs table.
 
 **Duplicate events appearing** — ensure idempotency logic is using the Stripe event ID as the dedup key, not the request ID.
-
----
-
-## License
-
-MIT
