@@ -105,14 +105,16 @@ export function LoginForm() {
             {passwordVisibility.visible ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         </div>
-        {fieldErrors.password ? <span className="text-sm text-[#ef4444]">{fieldErrors.password}</span> : null}
+        {fieldErrors.password ? (
+          <span className="text-xs font-normal text-[#ef4444]">{fieldErrors.password}</span>
+        ) : null}
       </label>
 
       <Link className="block text-right text-sm text-[#a1a1aa] hover:text-white" href="/forgot-password">
         Forgot password?
       </Link>
 
-      {error ? <p className="text-sm text-[#ef4444]">{error}</p> : null}
+      {error ? <p className="text-xs font-normal text-[#ef4444]">{error}</p> : null}
 
       <PrimaryButton disabled={isLoading || !canSubmit} type="submit">
         {isLoading ? 'Signing in...' : 'Sign in'}

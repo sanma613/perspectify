@@ -307,7 +307,9 @@ export function SignupForm() {
             {passwordVisibility.visible ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         </div>
-        {fieldErrors.password ? <span className="text-sm text-[#ef4444]">{fieldErrors.password}</span> : null}
+        {fieldErrors.password ? (
+          <span className="text-xs font-normal text-[#ef4444]">{fieldErrors.password}</span>
+        ) : null}
       </label>
       <div>
         <label className="mb-1 block text-sm text-zinc-400">Confirm password</label>
@@ -337,7 +339,9 @@ export function SignupForm() {
             {confirmPassword.visible ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         </div>
-        {fieldErrors.confirm ? <p className="mt-1 text-xs text-red-400">{fieldErrors.confirm}</p> : null}
+        {fieldErrors.confirm ? (
+          <p className="mt-1 text-xs font-normal text-[#ef4444]">{fieldErrors.confirm}</p>
+        ) : null}
       </div>
 
       <p className="text-xs text-[#a1a1aa]">
@@ -355,7 +359,7 @@ export function SignupForm() {
         </span>
       </p>
 
-      {error ? <p className="text-sm text-[#ef4444]">{error}</p> : null}
+      {error ? <p className="text-xs font-normal text-[#ef4444]">{error}</p> : null}
 
       <PrimaryButton disabled={isLoading || !canSubmit} type="submit">
         {isLoading ? 'Creating account...' : 'Create account'}

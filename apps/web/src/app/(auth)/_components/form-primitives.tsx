@@ -15,7 +15,7 @@ export function Field({
         {...props}
         className="h-11 w-full rounded-lg border border-white/10 bg-[#1a1a1a] px-3 text-base text-white outline-none transition-colors duration-200 ease-in-out placeholder:text-[#52525b] hover:bg-[#202020] focus-visible:ring-2 focus-visible:ring-green-500"
       />
-      {error ? <span className="text-xs text-[#ef4444]">{error}</span> : null}
+      {error ? <span className="text-xs font-normal text-[#ef4444]">{error}</span> : null}
     </label>
   )
 }
